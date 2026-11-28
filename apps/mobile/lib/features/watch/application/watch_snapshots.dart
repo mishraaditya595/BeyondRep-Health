@@ -128,30 +128,29 @@ PlansSnapshot buildPlansSnapshot({
     }
   }
 
-  final lastUse = <String, DateTime>{};
-  for (final s in completed) {
-    final plan = s.planUuid;
-    if (plan != null) lastUse.putIfAbsent(plan, () => _doneAt(s));
-  }
-  final others = [
-    for (final p in library.plans)
-      if (p.archivedAtMs == null &&
-          p.programUuid == null &&
-          p.uuid != todayPlan?.uuid)
-        p,
-  ];
-  others.sort((a, b) {
-    final x = lastUse[a.uuid];
-    final y = lastUse[b.uuid];
-    if (x != null && y != null) {
-      final byUse = y.compareTo(x);
-      if (byUse != 0) return byUse;
-    } else if (x != null || y != null) {
-      return x != null ? -1 : 1;
+  // The active program's workouts: used ones by first day, then unused ones
+  // by name. Nothing without an active program.
+  final others = <WorkoutPlanRecord>[];
+  if (week != null) {
+    final seen = <String>{?todayPlan?.uuid};
+    final byDay = [...week.program.days]
+      ..sort((a, b) => a.dayIndex.compareTo(b.dayIndex));
+    for (final day in byDay) {
+      final plan = day.planUuid == null ? null : week.plans[day.planUuid];
+      if (plan != null && plan.archivedAtMs == null && seen.add(plan.uuid)) {
+        others.add(plan);
+      }
     }
-    final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
-    return byName != 0 ? byName : a.uuid.compareTo(b.uuid);
-  });
+    final unused =
+        [
+          for (final p in week.plans.values)
+            if (p.archivedAtMs == null && !seen.contains(p.uuid)) p,
+        ]..sort((a, b) {
+          final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+          return byName != 0 ? byName : a.uuid.compareTo(b.uuid);
+        });
+    others.addAll(unused);
+  }
   final ordered = [?todayPlan, ...others].take(100);
 
   final recent = _recentExercises(completed);
@@ -200,7 +199,7 @@ Map<String, Object?> _planJson(
     ..sort((a, b) => a.position.compareTo(b.position));
   return {
     'plan_id': _cap(plan.uuid, 128),
-    'name': _cap(plan.name.isEmpty ? 'Plan' : plan.name, 120),
+    'name': _cap(plan.name.isEmpty ? 'Workout' : plan.name, 120),
     'exercises': [
       for (final row in rows.take(40))
         () {
