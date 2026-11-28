@@ -29,7 +29,7 @@ No other guideline failure. No test was skipped.
 
 ## Tablet and split view (automated)
 
-`apps/mobile/test/train/training_library_layout_test.dart` pumps the same screens inside the app shell (tab bar below 600 dp, rail from 600) at phone 360x740, tablet portrait 820x1180, tablet landscape 1180x820 and split view 507x1024, each in light and dark, plus split view at text scale 2.0. It asserts no exception (overflow), that Filters (and the sheet's Show results and Clear after scrolling to its end), Copy to My Plans, Add program, Start for a missed day and Open program can be hit-tested, and that list width stays within the shell's 1120 dp cap (`AdaptiveShell`; Your program adds its own 900 dp cap). 90 tests. No overflow and no covered control was found, so no layout fix was made. No new tablet layout was added.
+`apps/mobile/test/train/training_library_layout_test.dart` pumps the same screens inside the app shell (tab bar below 600 dp, rail from 600) at phone 360x740, tablet portrait 820x1180, tablet landscape 1180x820 and split view 507x1024, each in light and dark, plus split view at text scale 2.0. It asserts no exception (overflow), that Filters (and the sheet's Show results and Clear after scrolling to its end), the former Copy to My Plans button (removed in Programs stage 1), Add program, Start for a missed day and Open program can be hit-tested, and that list width stays within the shell's 1120 dp cap (`AdaptiveShell`; Your program adds its own 900 dp cap). 90 tests. No overflow and no covered control was found, so no layout fix was made. No new tablet layout was added.
 
 Not covered: real device rendering, safe areas on a physical iPad, Android tablet. Those are owner steps 7.1 in `docs/RELEASE.md`.
 
