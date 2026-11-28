@@ -17,6 +17,37 @@ import '../workouts/domain/workout_library_models.dart';
 import 'exercise_picker_sheet.dart';
 import 'train_library_state.dart';
 
+/// Refuses draft rows the repository would refuse later: an unknown
+/// exercise, rep targets on a timed exercise, seconds on a rep exercise
+/// ([ArgumentError]) and an archived exercise that was not already in
+/// [previousRows] ([ArchivedExercisePlanConflict]).
+void checkDraftRows(
+  List<PlanExerciseRecord> rows,
+  List<ExerciseRecord> definitions, {
+  required List<PlanExerciseRecord> previousRows,
+}) {
+  final byId = {for (final d in definitions) d.uuid: d};
+  final previous = {for (final r in previousRows) r.exerciseUuid};
+  for (final row in rows) {
+    row.validate();
+    final definition = byId[row.exerciseUuid];
+    if (definition == null) {
+      throw ArgumentError('Workout refers to an unknown exercise');
+    }
+    final timed = definition.inputMode == 'duration';
+    if (timed && (row.targetRepsMin != null || row.targetRepsMax != null)) {
+      throw ArgumentError('Timed exercise targets seconds, not reps');
+    }
+    if (!timed && row.targetDurationSeconds != null) {
+      throw ArgumentError('Rep exercise targets reps, not seconds');
+    }
+    if (definition.archivedAtMs != null &&
+        !previous.contains(row.exerciseUuid)) {
+      throw const ArchivedExercisePlanConflict();
+    }
+  }
+}
+
 class PlanEditorPage extends ConsumerStatefulWidget {
   const PlanEditorPage({
     this.planUuid,
@@ -383,9 +414,13 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
         if (label.isEmpty || label.length > 100 || items.length > 100) {
           throw ArgumentError('Invalid workout name or size');
         }
-        for (final item in items) {
-          item.validate();
-        }
+        checkDraftRows(
+          items,
+          ref
+              .read(workoutLibraryRepositoryProvider)
+              .listExercises(includeArchived: true),
+          previousRows: widget.initialDraft?.rows ?? const [],
+        );
         final draft = DraftWorkoutSource(
           name: label,
           description: description.text.trim(),
