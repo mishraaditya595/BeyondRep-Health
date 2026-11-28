@@ -10,7 +10,6 @@ import 'package:beyondrep/features/programs/data/objectbox_program_repository.da
 import 'package:beyondrep/features/catalog/domain/catalog_templates.dart';
 import 'package:beyondrep/features/programs/domain/program_models.dart';
 import 'package:beyondrep/features/programs/domain/program_repository.dart';
-import 'package:beyondrep/features/programs/application/program_providers.dart';
 import 'package:beyondrep/features/train/active_workout_state.dart';
 import 'package:beyondrep/features/train/my_program_page.dart';
 import 'package:beyondrep/features/train/program_detail_page.dart';

@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:beyondrep/core/clock.dart';
 import 'package:beyondrep/features/health/application/health_overview.dart';
 import 'package:beyondrep/features/health/domain/energy.dart';
 import 'package:beyondrep/features/health/domain/readiness.dart';
