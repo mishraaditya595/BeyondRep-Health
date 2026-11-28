@@ -80,7 +80,7 @@ void main() {
   testWidgets('Train offers the ready-made Workouts entry', (tester) async {
     await showApp(tester);
     await tester.scrollUntilVisible(find.text('Workouts'), 200);
-    expect(find.text('Ready-made sessions to start or copy'), findsOneWidget);
+    expect(find.text('Ready-made sessions to start'), findsOneWidget);
   });
 
   testWidgets('picking a catalogue-only exercise adds it to the workout', (

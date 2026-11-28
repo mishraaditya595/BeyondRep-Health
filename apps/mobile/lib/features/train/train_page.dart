@@ -16,12 +16,9 @@ import '../programs/application/program_providers.dart';
 import '../programs/domain/program_status.dart';
 import '../programs/presentation/start_program_day.dart';
 import '../progress/domain/progress_overview.dart';
-import '../workouts/domain/workout_library_models.dart';
 import '../watch/widgets/live_watch_auto_open.dart';
 import '../watch/widgets/live_watch_workout_card.dart';
 import 'active_workout_state.dart';
-import 'plan_fit_widgets.dart';
-import 'train_library_state.dart';
 
 class TrainPage extends ConsumerWidget {
   const TrainPage({super.key});
@@ -69,18 +66,6 @@ class TrainPage extends ConsumerWidget {
     );
   }
 
-  Future<void> _startPlan(
-    BuildContext context,
-    WidgetRef ref,
-    String uuid,
-  ) async {
-    await _start(
-      context,
-      ref,
-      () => ref.read(workoutActionsProvider).startPlan(uuid),
-    );
-  }
-
   Future<void> _start(
     BuildContext context,
     WidgetRef ref,
@@ -109,14 +94,13 @@ class TrainPage extends ConsumerWidget {
   void _showStartFailed(BuildContext context, WidgetRef ref) {
     showNsMessage(
       context,
-      'Could not start this workout. Check the plan and any unfinished workout.',
+      'Could not start this workout. Check any unfinished workout.',
     );
     ref.invalidate(activeWorkoutProvider);
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(trainLibraryProvider);
     final now = ref.watch(localNowProvider);
     final colors = Theme.of(context).extension<BeyondRepColors>()!;
     final card = ref.watch(activeProgramCardProvider);
@@ -209,38 +193,21 @@ class TrainPage extends ConsumerWidget {
             28 + MediaQuery.paddingOf(context).bottom,
           ),
           children: [
-            const PageHeader(
-              title: 'Train',
-              eyebrow: 'PLAN AND PERFORM TRAINING',
-            ),
+            const PageHeader(title: 'Train', eyebrow: 'PROGRAMS AND WORKOUTS'),
             const SizedBox(height: 24),
             const LiveWatchWorkoutCard(),
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.end,
-              spacing: 12,
-              runSpacing: 12,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      longDayLabel(now),
-                      style: TextStyle(color: colors.muted, fontSize: 12),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Your training week',
-                      style: Theme.of(context).textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                  ],
+                Text(
+                  longDayLabel(now),
+                  style: TextStyle(color: colors.muted, fontSize: 12),
                 ),
-                OutlinedButton.icon(
-                  onPressed: () => _open(context, ref, '/train/plans/new'),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Create training plan'),
+                const SizedBox(height: 4),
+                Text(
+                  'Your training week',
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w800),
                 ),
               ],
             ),
@@ -263,39 +230,19 @@ class TrainPage extends ConsumerWidget {
                 const SizedBox(height: 17),
               ],
             ],
-            const SectionHeading('Your plans'),
-            state.when(
-              loading: () => const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32),
-                  child: CircularProgressIndicator(),
-                ),
-              ),
-              error: (_, _) => Column(
-                children: [
-                  const Text('Could not load your local training plans.'),
-                  TextButton(
-                    onPressed: () => ref.invalidate(trainLibraryProvider),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-              data: (snapshot) => _planList(context, ref, snapshot),
-            ),
-            const SizedBox(height: 17),
             const SectionHeading('More ways to move'),
-            NsListCard(
-              icon: Icons.view_list_outlined,
-              title: 'Workouts',
-              subtitle: 'Ready-made sessions to start or copy',
-              onTap: () => _open(context, ref, '/train/workouts'),
-            ),
-            const SizedBox(height: 10),
             NsListCard(
               icon: Icons.event_repeat_outlined,
               title: 'Programs',
-              subtitle: 'Multi-week plans with a weekly schedule',
+              subtitle: 'Ready-made and your own',
               onTap: () => _open(context, ref, '/train/programs'),
+            ),
+            const SizedBox(height: 10),
+            NsListCard(
+              icon: Icons.view_list_outlined,
+              title: 'Workouts',
+              subtitle: 'Ready-made sessions to start',
+              onTap: () => _open(context, ref, '/train/workouts'),
             ),
             const SizedBox(height: 10),
             NsListCard(
@@ -335,7 +282,7 @@ class TrainPage extends ConsumerWidget {
       ),
       const SizedBox(height: 6),
       Text(
-        'Start recording reps and weights offline, or build a plan.',
+        'Start recording reps and weights offline, or follow a program.',
         style: TextStyle(color: colors.muted),
       ),
       const SizedBox(height: 16),
@@ -405,82 +352,6 @@ class TrainPage extends ConsumerWidget {
     minimumSize: const Size(double.infinity, 46),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
   );
-
-  Widget _planList(
-    BuildContext context,
-    WidgetRef ref,
-    WorkoutLibrarySnapshot data,
-  ) {
-    if (data.plans.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'No plans yet',
-                style: Theme.of(context).textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Make a plan with your favourite exercises, sets, and rep targets.',
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    final labels = <String, String>{
-      for (final exercise in data.exercises) exercise.uuid: exercise.name,
-    };
-    final fit = ref.watch(planFitProvider);
-    Widget planCard(WorkoutPlanRecord plan) => NsListCard(
-      icon: Icons.fitness_center,
-      title: plan.name,
-      subtitle:
-          (plan.exercises.isEmpty
-              ? 'No exercises added'
-              : plan.exercises
-                    .map((e) => labels[e.exerciseUuid] ?? 'Archived exercise')
-                    .take(3)
-                    .join(' · ')) +
-          planRecoveryLine(fit?.byPlan[plan.uuid]),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            tooltip: 'Start ${plan.name}',
-            icon: const Icon(Icons.play_circle_fill),
-            onPressed: () => _startPlan(context, ref, plan.uuid),
-          ),
-          IconButton(
-            tooltip: 'Edit ${plan.name}',
-            icon: const Icon(Icons.edit_outlined),
-            onPressed: () =>
-                _open(context, ref, '/train/plans/${plan.uuid}/edit'),
-          ),
-        ],
-      ),
-      onTap: () => _open(context, ref, '/train/plans/${plan.uuid}/edit'),
-    );
-    return Column(
-      children: [
-        if (isWideWindow(context))
-          NsResponsiveGrid(
-            maxColumns: 2,
-            children: [for (final plan in data.plans) planCard(plan)],
-          )
-        else
-          for (final plan in data.plans)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: planCard(plan),
-            ),
-      ],
-    );
-  }
 }
 
 /// Prototype `.week-strip`: display-only dates of the current

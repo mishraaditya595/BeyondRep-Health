@@ -60,27 +60,10 @@ void main() {
         await _pump(tester, textScale: scale, brightness: brightness);
         expect(tester.takeException(), isNull);
         expect(find.text('Your training week'), findsOneWidget);
-        expect(find.text('Create training plan'), findsOneWidget);
-        // The button stays fully on screen and does not cover the title.
-        final button = tester.getRect(
-          find.widgetWithText(OutlinedButton, 'Create training plan'),
-        );
+        expect(find.text('Create training plan'), findsNothing);
         final title = tester.getRect(find.text('Your training week'));
-        expect(button.right, lessThanOrEqualTo(390 - 16));
-        expect(button.overlaps(title), isFalse);
+        expect(title.right, lessThanOrEqualTo(390 - 16));
       });
     }
   }
-
-  testWidgets('with room, the button stays on the title line, right-aligned', (
-    tester,
-  ) async {
-    await _pump(tester, textScale: 1, brightness: Brightness.light, width: 800);
-    final button = tester.getRect(
-      find.widgetWithText(OutlinedButton, 'Create training plan'),
-    );
-    final title = tester.getRect(find.text('Your training week'));
-    expect(button.right, 800 - 16);
-    expect(button.bottom, closeTo(title.bottom, 12));
-  });
 }

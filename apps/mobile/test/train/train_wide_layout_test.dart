@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:beyondrep/features/workouts/data/objectbox_workout_library_repository.dart';
 import 'package:beyondrep/objectbox.g.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'training_library_harness.dart';
 
 const _wide = Size(1194, 834);
-const _planNames = ['Plan A', 'Plan B', 'Plan C'];
 
 void main() {
   late Directory directory;
@@ -30,15 +28,6 @@ void main() {
     Size size = _wide,
   }) async {
     if (program) seedLibraryProgram(store, 'prog.three');
-    final library = ObjectBoxWorkoutLibraryRepository(store);
-    for (final name in _planNames) {
-      library.savePlan(
-        uuid: name,
-        name: name,
-        description: '',
-        exercises: const [],
-      );
-    }
     await pumpLibraryScreen(
       tester,
       store: store,
@@ -71,20 +60,5 @@ void main() {
       tester.getSize(card.first).width,
       tester.getSize(find.byType(ListView).first).width - 32,
     );
-  });
-
-  testWidgets('wide Train lays plans in two columns', (tester) async {
-    // Tall, so the lazy list builds all three plans.
-    await openTrain(tester, program: false, size: const Size(1194, 1600));
-    final spots =
-        [
-          for (final name in _planNames)
-            tester.getTopLeft(find.text(name).first),
-        ]..sort(
-          (a, b) => a.dy != b.dy ? a.dy.compareTo(b.dy) : a.dx.compareTo(b.dx),
-        );
-    expect(spots[0].dy, spots[1].dy);
-    expect(spots[1].dx, greaterThan(spots[0].dx));
-    expect(spots[2].dy, greaterThan(spots[0].dy));
   });
 }

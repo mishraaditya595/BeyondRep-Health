@@ -998,14 +998,11 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(find.text('Programs'), findsOneWidget);
-      expect(
-        find.text('Multi-week plans with a weekly schedule'),
-        findsOneWidget,
-      );
+      expect(find.text('Ready-made and your own'), findsOneWidget);
       expect(find.text('Your program'), findsNothing);
     });
 
-    testWidgets('the active program shows today; its plans are not listed', (
+    testWidgets('the active program shows today; its workouts are not listed', (
       tester,
     ) async {
       seed('prog.three');
@@ -1014,7 +1011,7 @@ void main() {
       expect(find.text('Synthetic three-day'), findsOneWidget);
       expect(find.text('Today: Synthetic push'), findsOneWidget);
       expect(find.text('Synthetic pull'), findsNothing);
-      expect(find.text('No plans yet', skipOffstage: false), findsOneWidget);
+      expect(find.text('Your plans', skipOffstage: false), findsNothing);
     });
 
     testWidgets('a rest day reads Today: Rest day', (tester) async {

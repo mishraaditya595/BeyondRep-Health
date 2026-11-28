@@ -15,7 +15,6 @@ import 'package:beyondrep/features/workouts/domain/workout_library_models.dart';
 import 'package:beyondrep/features/workouts/domain/workout_library_repository.dart';
 
 import '../catalog/catalog_fixtures.dart';
-import '../support/fake_health_overview.dart';
 
 class FakeLibrary implements WorkoutLibraryRepository {
   final planRecords = <String, WorkoutPlanRecord>{};
@@ -220,6 +219,28 @@ Future<void> fillAndSave(WidgetTester tester, {String? name}) async {
   await tester.pumpAndSettle();
 }
 
+/// A start page for the editor tests: the editor opens from it.
+class _HomeStub extends StatelessWidget {
+  const _HomeStub();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Column(
+      children: [
+        const Text('Home'),
+        TextButton(
+          onPressed: () => context.push('/train/plans/new'),
+          child: const Text('Create training plan'),
+        ),
+        TextButton(
+          onPressed: () => context.push('/train/plans/existing/edit'),
+          child: const Text('Upper A'),
+        ),
+      ],
+    ),
+  );
+}
+
 void main() {
   group('editor modes', () {
     testWidgets('program mode saves through addWorkout and pops the UUID', (
@@ -378,74 +399,6 @@ void main() {
     expect(find.textContaining('NO ACCOUNT REQUIRED'), findsNothing);
   });
 
-  testWidgets('user creates a local training plan from an empty Train page', (
-    tester,
-  ) async {
-    final fake = FakeLibrary();
-    final router = GoRouter(
-      initialLocation: '/train',
-      routes: [
-        GoRoute(path: '/train', builder: (_, _) => const TrainPage()),
-        GoRoute(
-          path: '/train/plans/new',
-          builder: (_, _) => const PlanEditorPage(),
-        ),
-      ],
-    );
-    addTearDown(router.dispose);
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          ...catalogTestOverrides(),
-          fakeHealthOverview(FakeHealthOverviewController(null)),
-          workoutLibraryRepositoryProvider.overrideWithValue(fake),
-          activeWorkoutProvider.overrideWith(
-            (ref) => const AsyncData<ActiveWorkoutView?>(null),
-          ),
-        ],
-        child: MaterialApp.router(
-          theme: BeyondRepTheme.build(Brightness.light),
-          routerConfig: router,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('No plans yet'),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('No plans yet'), findsOneWidget);
-
-    await tester.tap(find.text('Create training plan'));
-    await tester.pumpAndSettle();
-    expect(find.text('BUILD THE WORKOUT'), findsOneWidget);
-
-    await tester.enterText(find.byType(TextField).first, 'Push day');
-    await tester.tap(find.text('Add'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Barbell bench press').last);
-    await tester.pumpAndSettle();
-    expect(find.textContaining('3 sets'), findsOneWidget);
-
-    await tester.ensureVisible(find.text('Save workout'));
-    await tester.pumpAndSettle();
-    // ensureVisible can align to the exact bottom edge of the test viewport.
-    // Move the list farther so the simulated tap hits the button.
-    await tester.drag(find.byType(ListView).last, const Offset(0, -160));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Save workout'));
-    await tester.pumpAndSettle();
-
-    expect(fake.planRecords.values.single.name, 'Push day');
-    expect(
-      fake.planRecords.values.single.exercises.single.exerciseUuid,
-      'builtin.v1.bench-press',
-    );
-    expect(find.text('Push day'), findsOneWidget);
-  });
-
   testWidgets('editor changes an existing plan without losing its exercises', (
     tester,
   ) async {
@@ -468,7 +421,7 @@ void main() {
     final router = GoRouter(
       initialLocation: '/train/plans/existing/edit',
       routes: [
-        GoRoute(path: '/train', builder: (_, _) => const TrainPage()),
+        GoRoute(path: '/train', builder: (_, _) => const _HomeStub()),
         GoRoute(
           path: '/train/plans/:id/edit',
           builder: (_, _) => const PlanEditorPage(planUuid: 'existing'),
@@ -519,7 +472,7 @@ void main() {
       final router = GoRouter(
         initialLocation: '/train/plans/existing/edit',
         routes: [
-          GoRoute(path: '/train', builder: (_, _) => const TrainPage()),
+          GoRoute(path: '/train', builder: (_, _) => const _HomeStub()),
           GoRoute(
             path: '/train/plans/:id/edit',
             builder: (_, _) => const PlanEditorPage(planUuid: 'existing'),
@@ -601,7 +554,7 @@ void main() {
     final router = GoRouter(
       initialLocation: '/train',
       routes: [
-        GoRoute(path: '/train', builder: (_, _) => const TrainPage()),
+        GoRoute(path: '/train', builder: (_, _) => const _HomeStub()),
         GoRoute(
           path: '/train/plans/new',
           builder: (_, _) => const PlanEditorPage(),
@@ -638,12 +591,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Discard changes'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('No plans yet'),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('No plans yet'), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
     expect(fake.planRecords, isEmpty);
   });
   testWidgets('missing edit plan disables save and cannot create ghost', (
@@ -653,7 +601,7 @@ void main() {
     final router = GoRouter(
       initialLocation: '/train/plans/ghost/edit',
       routes: [
-        GoRoute(path: '/train', builder: (_, _) => const TrainPage()),
+        GoRoute(path: '/train', builder: (_, _) => const _HomeStub()),
         GoRoute(
           path: '/train/plans/:id/edit',
           builder: (_, _) => const PlanEditorPage(planUuid: 'ghost'),
@@ -703,7 +651,7 @@ void main() {
     final router = GoRouter(
       initialLocation: '/train/plans/old/edit',
       routes: [
-        GoRoute(path: '/train', builder: (_, _) => const TrainPage()),
+        GoRoute(path: '/train', builder: (_, _) => const _HomeStub()),
         GoRoute(
           path: '/train/plans/:id/edit',
           builder: (_, _) => const PlanEditorPage(planUuid: 'old'),
@@ -753,7 +701,7 @@ void main() {
     final router = GoRouter(
       initialLocation: '/train',
       routes: [
-        GoRoute(path: '/train', builder: (_, _) => const TrainPage()),
+        GoRoute(path: '/train', builder: (_, _) => const _HomeStub()),
         GoRoute(
           path: '/train/plans/:id/edit',
           builder: (_, _) => const PlanEditorPage(planUuid: 'existing'),
@@ -777,14 +725,6 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('Upper A'),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    await tester.drag(find.byType(ListView).first, const Offset(0, -100));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Upper A'));
     await tester.pumpAndSettle();
     await tester.showKeyboard(find.byType(TextField).first);
@@ -798,7 +738,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.text('Discard unsaved changes?'), findsNothing);
-    expect(find.text('Your plans'), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
   });
 
   testWidgets('nested navigator back warns before discarding actual edits', (
@@ -808,7 +748,7 @@ void main() {
     final router = GoRouter(
       initialLocation: '/train',
       routes: [
-        GoRoute(path: '/train', builder: (_, _) => const TrainPage()),
+        GoRoute(path: '/train', builder: (_, _) => const _HomeStub()),
         GoRoute(
           path: '/train/plans/new',
           builder: (_, _) => const PlanEditorPage(),
@@ -856,7 +796,7 @@ void main() {
     final router = GoRouter(
       initialLocation: '/train',
       routes: [
-        GoRoute(path: '/train', builder: (_, _) => const TrainPage()),
+        GoRoute(path: '/train', builder: (_, _) => const _HomeStub()),
         GoRoute(
           path: '/train/plans/new',
           builder: (_, _) => const PlanEditorPage(),
@@ -971,7 +911,7 @@ void main() {
       final router = GoRouter(
         initialLocation: '/train/plans/existing/edit',
         routes: [
-          GoRoute(path: '/train', builder: (_, _) => const TrainPage()),
+          GoRoute(path: '/train', builder: (_, _) => const _HomeStub()),
           GoRoute(
             path: '/train/plans/:id/edit',
             builder: (_, _) => const PlanEditorPage(planUuid: 'existing'),
