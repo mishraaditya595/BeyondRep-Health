@@ -25,7 +25,15 @@ class PlanEditorPage extends ConsumerStatefulWidget {
     this.returnDraft = false,
     this.initialDraft,
     super.key,
-  });
+  }) : assert(
+         planUuid != null || programUuid != null || returnDraft,
+         'A new workout belongs to a program or is a returned draft.',
+       ),
+       assert(
+         programUuid == null ||
+             (programDay != null && programDay >= 0 && programDay <= 6),
+         'A new program workout needs its day.',
+       );
 
   /// Edit an existing workout.
   final String? planUuid;
@@ -398,7 +406,7 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
                 description: description.text,
                 rows: List.unmodifiable(items),
               ),
-              dayIndex: widget.programDay ?? 0,
+              dayIndex: widget.programDay!,
               requestUuid: planUuid,
             );
         invalidatePrograms(ref);

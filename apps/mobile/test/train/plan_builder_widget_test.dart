@@ -225,8 +225,8 @@ class _HomeStub extends StatelessWidget {
       children: [
         const Text('Home'),
         TextButton(
-          onPressed: () => context.push('/train/plans/new'),
-          child: const Text('Create training plan'),
+          onPressed: () => context.push('/train/draft'),
+          child: const Text('Create workout'),
         ),
         TextButton(
           onPressed: () => context.push('/train/plans/existing/edit'),
@@ -238,6 +238,11 @@ class _HomeStub extends StatelessWidget {
 }
 
 void main() {
+  test('the editor refuses a standalone new workout', () {
+    expect(() => PlanEditorPage(), throwsAssertionError);
+    expect(() => PlanEditorPage(programUuid: 'p'), throwsAssertionError);
+  });
+
   group('editor modes', () {
     testWidgets('program mode saves through addWorkout and pops the UUID', (
       tester,
@@ -316,7 +321,7 @@ void main() {
         tester,
         fake: FakeLibrary(),
         programs: programs,
-        editor: const PlanEditorPage(programUuid: 'prog-1'),
+        editor: const PlanEditorPage(programUuid: 'prog-1', programDay: 0),
       );
       await fillAndSave(tester, name: 'One too many');
       expect(
@@ -553,8 +558,8 @@ void main() {
       routes: [
         GoRoute(path: '/train', builder: (_, _) => const _HomeStub()),
         GoRoute(
-          path: '/train/plans/new',
-          builder: (_, _) => const PlanEditorPage(),
+          path: '/train/draft',
+          builder: (_, _) => const PlanEditorPage(returnDraft: true),
         ),
       ],
     );
@@ -575,7 +580,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Create training plan'));
+    await tester.tap(find.text('Create workout'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'Draft');
     await tester.pageBack();
@@ -747,8 +752,8 @@ void main() {
       routes: [
         GoRoute(path: '/train', builder: (_, _) => const _HomeStub()),
         GoRoute(
-          path: '/train/plans/new',
-          builder: (_, _) => const PlanEditorPage(),
+          path: '/train/draft',
+          builder: (_, _) => const PlanEditorPage(returnDraft: true),
         ),
       ],
     );
@@ -769,7 +774,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Create training plan'));
+    await tester.tap(find.text('Create workout'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'Actual edit');
     // The platform's back dispatcher ultimately asks the active Navigator
@@ -790,13 +795,28 @@ void main() {
 
   testWidgets('archived exercise save error is actionable', (tester) async {
     final fake = FakeLibrary()..rejectArchivedOnSave = true;
+    fake.planRecords['existing'] = const WorkoutPlanRecord(
+      uuid: 'existing',
+      name: 'Upper A',
+      description: '',
+      updatedAtMs: 7,
+      exercises: [
+        PlanExerciseRecord(
+          uuid: 'item-a',
+          exerciseUuid: 'builtin.v1.bench-press',
+          position: 0,
+          targetSets: 3,
+          targetRepsMax: 12,
+        ),
+      ],
+    );
     final router = GoRouter(
-      initialLocation: '/train',
+      initialLocation: '/train/plans/existing/edit',
       routes: [
         GoRoute(path: '/train', builder: (_, _) => const _HomeStub()),
         GoRoute(
-          path: '/train/plans/new',
-          builder: (_, _) => const PlanEditorPage(),
+          path: '/train/plans/:id/edit',
+          builder: (_, _) => const PlanEditorPage(planUuid: 'existing'),
         ),
       ],
     );
@@ -817,8 +837,6 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Create training plan'));
-    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'Upper A');
     await tester.ensureVisible(find.text('Save workout'));
     await tester.pumpAndSettle();
@@ -827,7 +845,7 @@ void main() {
     await tester.tap(find.text('Save workout'));
     await tester.pumpAndSettle();
     expect(find.textContaining('archived'), findsWidgets);
-    expect(fake.planRecords, isEmpty);
+    expect(fake.planRecords['existing']!.name, 'Upper A');
   });
 
   test('fake repository mirrors archived reference constraint', () {
