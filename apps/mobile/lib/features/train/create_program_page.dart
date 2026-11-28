@@ -55,7 +55,9 @@ class _CreateProgramPageState extends ConsumerState<CreateProgramPage> {
   bool get _dirty =>
       _name.text.trim().isNotEmpty ||
       _description.text.trim().isNotEmpty ||
-      _days.any((d) => d != null);
+      _days.any((d) => d != null) ||
+      _firstWeekday != null ||
+      !_makeActive;
 
   int get _weekday => _firstWeekday ?? ref.read(localNowProvider).weekday;
 

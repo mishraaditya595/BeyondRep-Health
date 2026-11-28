@@ -264,6 +264,31 @@ void main() {
     expect(find.text('open'), findsOneWidget);
   });
 
+  testWidgets('changing Starts on counts as a change', (tester) async {
+    await pump(tester);
+    await tester.tap(find.text('Starts on'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Monday'));
+    await tester.tap(find.text('Save').last);
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Discard this program?'), findsOneWidget);
+  });
+
+  testWidgets('turning the active switch off counts as a change', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.ensureVisible(find.text('Make this my active program'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Make this my active program'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Discard this program?'), findsOneWidget);
+  });
+
   testWidgets('back without changes leaves at once', (tester) async {
     await pump(tester);
     await tester.pageBack();
