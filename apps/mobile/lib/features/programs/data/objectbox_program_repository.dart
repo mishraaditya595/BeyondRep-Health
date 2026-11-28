@@ -218,10 +218,11 @@ class ObjectBoxProgramRepository implements ProgramRepository {
   }
 
   /// [label] made unique among live program names by adding " (n)".
-  String _uniqueName(String label) {
+  String _uniqueName(String label, {String? exceptUuid}) {
     final taken = {
       for (final p in _programs.getAll())
-        if (p.archivedAtMs == null) p.name.trim().toLowerCase(),
+        if (p.archivedAtMs == null && p.uuid != exceptUuid)
+          p.name.trim().toLowerCase(),
     };
     var unique = label;
     for (var n = 2; taken.contains(unique.toLowerCase()); n++) {
@@ -502,7 +503,7 @@ class ObjectBoxProgramRepository implements ProgramRepository {
     }
     _store.runInTransaction(TxMode.write, () {
       final program = _live(programUuid);
-      program.name = label;
+      program.name = _uniqueName(label, exceptUuid: programUuid);
       program.description = _clip(description);
       program.updatedAtMs = _now();
       _programs.put(program);

@@ -805,6 +805,16 @@ void main() {
       expect(programs.getProgram(p.uuid)!.name, 'Renamed');
     });
 
+    test('updateDetails never duplicates another live program name', () {
+      final a = create('c-1', name: 'Alpha');
+      final b = create('c-2', name: 'Beta');
+      programs.updateDetails(b.uuid, name: ' alpha ', description: '');
+      expect(programs.getProgram(b.uuid)!.name, 'alpha (2)');
+      // Keeping its own name (even in other case) is not a clash.
+      programs.updateDetails(a.uuid, name: 'ALPHA', description: '');
+      expect(programs.getProgram(a.uuid)!.name, 'ALPHA');
+    });
+
     for (final step in ['exercises', 'plans', 'rows', 'program', 'days']) {
       test('a throw after "$step" during create leaves nothing', () {
         programs.debugImportHook = (s) {
