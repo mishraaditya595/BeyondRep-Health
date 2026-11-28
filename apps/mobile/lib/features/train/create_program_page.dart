@@ -305,9 +305,8 @@ class _CreateProgramPageState extends ConsumerState<CreateProgramPage> {
                     ),
                   ),
                 const SizedBox(height: 6),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Make this my active program'),
+                NsSwitchRow(
+                  label: 'Make this my active program',
                   value: _makeActive,
                   onChanged: (value) => setState(() => _makeActive = value),
                 ),

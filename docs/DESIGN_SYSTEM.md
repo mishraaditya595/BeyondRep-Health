@@ -32,7 +32,7 @@ Spacing uses 4px rhythm (8, 12, 16, 20, 24, 32), page gutters 16â€“24, cards 20â
 - `.theme-switch`: accessible appearance choice in both modes
 
 ## Shared Flutter components
-All of these live in `apps/mobile/lib/core/design/`. Look comes from `BeyondRepTheme` (input, dialog, sheet, chip, snackbar, menu and button themes), so use the widget and do not restyle it per screen. **Do not invent new components in a feature**: extend the kit in its own PR, then use it. `test/design_kit_guard_test.dart` fails on raw Material controls in `lib/features`.
+All of these live in `apps/mobile/lib/core/design/`. Look comes from `BeyondRepTheme` (input, dialog, sheet, chip, switch, snackbar, menu and button themes), so use the widget and do not restyle it per screen. **Do not invent new components in a feature**: extend the kit in its own PR, then use it. `test/design_kit_guard_test.dart` fails on raw Material controls in `lib/features`.
 
 | Need | Use | File |
 |---|---|---|
@@ -58,6 +58,7 @@ All of these live in `apps/mobile/lib/core/design/`. Look comes from `BeyondRepT
 | Month grid with trained days and today | `NsMonthCalendar` | `stats.dart` |
 | Dark hero card with eyebrow, title, optional leading widget, child and actions | `NsHeroFrame` + `NsHeroAction` | `hero_frame.dart` |
 | Check control for a logged row | `NsCheckButton` | `inputs.dart` |
+| On/off setting row (label, optional subtitle, 48 dp target, switch semantics; no raw `Switch`/`SwitchListTile` in features) | `NsSwitchRow` | `inputs.dart` |
 | Floating bottom nav | `FloatingNavBar` | `app/floating_nav_bar.dart` |
 | Trend arrow + words | `NsTrendLabel` | `charts/trend_label.dart` |
 | Score ring | `NsScoreRing` | `charts/score_ring.dart` |
@@ -70,7 +71,7 @@ All of these live in `apps/mobile/lib/core/design/`. Look comes from `BeyondRepT
 
 Deliberate deviation from the prototype: the light-mode inactive nav label uses `BeyondRepPalette.lightMuted` (`#586E62`, 5.04:1 on the nav surface at 10 px) because the prototype's `#647674` is 4.39:1 and fails the 4.5:1 text contrast guideline (`test/accessibility/training_library_a11y_test.dart`).
 
-Feature-level (not kit) widgets: `MuscleMap` / `MuscleRecoveryCard` in `features/progress/muscle_map.dart` draw the body map from a `MuscleRecovery`. Its values come from `muscleRecoveryProvider`, derived from finished workouts in the last 72 hours (catalog muscle group per exercise with a completed working set, fading linearly); custom groups that don't name a drawn muscle are not drawn but are still named on the card. The card names the logged groups ("Legs"), never individual muscles the log cannot support.
+Feature-level (not kit) widgets: `showDaySheet` in `features/train/workout_source_sheet.dart` is the Your program day sheet (rest, new workout, ready-made workout, one of my saved workouts, workouts already in the program, with search over 8 entries) built from `showNsSheet`, `NsListCard` and `NsTextField`; `BetterFitCard` in `features/train/plan_fit_widgets.dart` is an `InsightCard` suggesting the program workout that rests the tired muscles. `MuscleMap` / `MuscleRecoveryCard` in `features/progress/muscle_map.dart` draw the body map from a `MuscleRecovery`. Its values come from `muscleRecoveryProvider`, derived from finished workouts in the last 72 hours (catalog muscle group per exercise with a completed working set, fading linearly); custom groups that don't name a drawn muscle are not drawn but are still named on the card. The card names the logged groups ("Legs"), never individual muscles the log cannot support.
 
 Primary actions are `FilledButton`, secondary `OutlinedButton`, tertiary `TextButton` (all themed). Dispose dialog `TextEditingController`s with `disposeAfterDialog` (`core/ui/`).
 
