@@ -155,7 +155,7 @@ class _ExerciseCatalogPageState extends ConsumerState<ExerciseCatalogPage> {
       title: 'Archive exercise?',
       message:
           'Remove "${exercise.name}" from your library? '
-          'It will remain in existing plans and workout history.',
+          'It will remain in existing workouts and workout history.',
       confirmLabel: 'Archive',
     );
     if (!confirm || !mounted) return;

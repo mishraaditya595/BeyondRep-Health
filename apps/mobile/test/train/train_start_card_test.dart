@@ -184,15 +184,15 @@ void main() {
         find.text('Fair energy. Train as planned, watch effort.'),
         findsOneWidget,
       );
-      expect(find.text('Your plans are not changed'), findsNothing);
+      expect(find.text('Your workouts are not changed'), findsNothing);
     });
 
-    testWidgets('low strip says plans are not changed and uses red', (
+    testWidgets('low strip says workouts are not changed and uses red', (
       tester,
     ) async {
       await open(tester, health: _today(_ready(41)));
       expect(find.text('Low energy. Take it easier.'), findsOneWidget);
-      expect(find.text('Your plans are not changed'), findsOneWidget);
+      expect(find.text('Your workouts are not changed'), findsOneWidget);
       final score = tester.widget<Text>(find.text('41'));
       expect(score.style?.color, BeyondRepPalette.redLight);
     });
@@ -232,10 +232,12 @@ void main() {
           'Still learning your patterns: 3 more workouts for a calibrated score.';
       expect(find.text('Low energy. Take it easier.'), findsOneWidget);
       expect(find.text(learning), findsOneWidget);
-      expect(find.text('Your plans are not changed'), findsOneWidget);
+      expect(find.text('Your workouts are not changed'), findsOneWidget);
       expect(
         tester.getTopLeft(find.text(learning)).dy,
-        lessThan(tester.getTopLeft(find.text('Your plans are not changed')).dy),
+        lessThan(
+          tester.getTopLeft(find.text('Your workouts are not changed')).dy,
+        ),
       );
       expect(
         find.bySemanticsLabel('Energy 45, Take it easier. $learning See why'),

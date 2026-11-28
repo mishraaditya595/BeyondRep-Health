@@ -11,7 +11,7 @@ import '../domain/program_models.dart';
 import '../domain/program_schedule.dart';
 
 const _startFailedMessage =
-    'Could not start this workout. Check the plan and any unfinished '
+    'Could not start this workout. Check the program and any unfinished '
     'workout.';
 
 /// Starts [program]'s workout for today, or for a missed day when

@@ -128,7 +128,7 @@ const _copy = <MetricKey, MetricExplanation>{
     summary: 'How much energy you have to train right now',
     what: 'A 0 to 100 score worked out on your phone. Each day starts from your recovery when you wake (HRV, resting heart rate, last night\'s sleep, your sleep over the past week and your recent training load), then goes down with each workout you finish, with active calories above your usual and a little with long hours awake. A nap adds a few points back.',
     tells: '70 and up is Good: train as planned. 50 to 69 is Fair: train, but watch your effort. Under 50 is Low: consider an easier session. It compares you only with your own last 30 days. While it is still learning your patterns, the score can move more.',
-    inBeyondRep: 'Shown on Today, Health, Train and Apple Watch. It never changes your plans. It is guidance, not medical advice.',
+    inBeyondRep: 'Shown on Today, Health, Train and Apple Watch. It never changes your workouts. It is guidance, not medical advice.',
   ),
   MetricKey.sleepScore: MetricExplanation(
     title: 'Sleep score',

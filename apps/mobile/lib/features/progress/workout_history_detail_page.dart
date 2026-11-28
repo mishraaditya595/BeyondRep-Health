@@ -288,7 +288,7 @@ class WorkoutHistoryDetailPage extends ConsumerWidget {
           text: TextSpan(
             text:
                 'Historical snapshots are read-only. '
-                'Edits to the original exercise catalog or training plan '
+                'Edits to the original exercise catalog or workout '
                 'cannot rewrite a completed workout.',
           ),
         ),

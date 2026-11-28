@@ -95,7 +95,7 @@ class _TodayPageState extends ConsumerState<TodayPage> {
       if (!mounted) return;
       showNsMessage(
         context,
-        'Could not start this workout. Check the plan and any unfinished '
+        'Could not start this workout. Check the program and any unfinished '
         'workout.',
       );
       ref.invalidate(activeWorkoutProvider);

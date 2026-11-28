@@ -179,7 +179,10 @@ void main() {
     await _pump(tester, _low());
     await _tapStart(tester);
     expect(find.text('Energy is low right now'), findsOneWidget);
-    expect(find.textContaining('Your plans are not changed'), findsNWidgets(2));
+    expect(
+      find.textContaining('Your workouts are not changed'),
+      findsNWidgets(2),
+    );
     expect(_actions.started, isEmpty);
     await tester.tap(find.text('Start workout'));
     await tester.pumpAndSettle();

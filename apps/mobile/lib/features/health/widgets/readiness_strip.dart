@@ -134,7 +134,7 @@ class _Ready extends StatelessWidget {
                           ),
                         if (band == ReadinessBand.low)
                           Text(
-                            'Your plans are not changed',
+                            'Your workouts are not changed',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.mutedColor,
                             ),

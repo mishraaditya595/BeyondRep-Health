@@ -57,7 +57,7 @@ class _AccountSyncPageState extends ConsumerState<AccountSyncPage> {
           'cloud workout history, deletion tombstones and sync receipts. '
           'Other devices will lose access. Once deletion is confirmed, '
           'this device will also erase this account\'s local workouts, '
-          'plans and pending uploads. If the response is uncertain, local '
+          'programs and pending uploads. If the response is uncertain, local '
           'data stays locked instead. Export your cloud workout history FIRST. '
           'You must verify a new code sent using the normal Supabase '
           'sign-in email template before deletion.',
@@ -79,7 +79,7 @@ class _AccountSyncPageState extends ConsumerState<AccountSyncPage> {
           'This cannot be undone. The verified account and its cloud '
           'history will be deleted. This device immediately locks the '
           'account partition. Once the server confirms deletion, local '
-          'workouts, plans and unsynced data are permanently erased too. '
+          'workouts, programs and unsynced data are permanently erased too. '
           'If the result is uncertain they remain locked, not erased.',
       confirmLabel: 'Delete permanently',
     );
@@ -144,7 +144,7 @@ class _AccountSyncPageState extends ConsumerState<AccountSyncPage> {
         context,
         title: 'Sign out of BeyondRep?',
         message:
-            '${warning}All workouts, unfinished sessions and custom plans '
+            '${warning}All workouts, unfinished sessions and programs '
             'remain on this device. Signing out locks their local account '
             'partition; it does not erase your cloud account or its data.',
         confirmLabel: 'Sign out',
@@ -356,7 +356,7 @@ class _AccountSyncPageState extends ConsumerState<AccountSyncPage> {
                 const Text(
                   'Completed phone workouts (including sets, loads, exercise '
                   'labels and timestamps) can be backed up automatically. '
-                  'Unfinished sessions, custom plans and preferences stay '
+                  'Unfinished sessions, programs and preferences stay '
                   'on this device. Readings from Apple Health or Health '
                   'Connect are read on this device when shown and are never '
                   'saved or backed up by BeyondRep. Signing out never deletes '
@@ -377,7 +377,7 @@ class _AccountSyncPageState extends ConsumerState<AccountSyncPage> {
                 const SizedBox(height: 8),
                 const Text(
                   'Exports include completed phone workouts currently in '
-                  'your cloud account. Pending local workouts, custom plans, '
+                  'your cloud account. Pending local workouts, programs, '
                   'unfinished sessions and HealthKit/Health Connect data '
                   'are excluded. Choose the destination in the system '
                   'document picker; treat the file as private.',
@@ -386,9 +386,9 @@ class _AccountSyncPageState extends ConsumerState<AccountSyncPage> {
                 const Text(
                   'Deleting an account permanently removes its cloud history '
                   'and disables sign-in on other devices. Any unfinished or '
-                  'unsynced workouts and custom plans on this device are NOT '
+                  'unsynced workouts and programs on this device are NOT '
                   'part of the cloud export. A confirmed deletion also erases '
-                  'this account\'s local workouts and plans; an uncertain '
+                  'this account\'s local workouts and programs; an uncertain '
                   'server result only locks them.',
                 ),
                 const SizedBox(height: 12),

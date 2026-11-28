@@ -530,3 +530,14 @@ Log a new weight to Apple Health / Health Connect. Implemented in source, **not 
 | Sheet cannot be closed while saving; the snackbar still appears after it closes | not run |
 | VoiceOver and TalkBack read the sheet, the field error and the snackbar Undo | not run |
 | Store disclosures: Play Health apps declaration lists `WRITE_WEIGHT`; App Privacy answers unchanged | not run |
+
+## Programs replace plans, stage 1 (device checks, none run)
+
+Owner actions on a physical iPhone, Android phone and, where available, both watches:
+
+- [ ] Create a program (name, three workouts of different kinds, day slots, active on). It opens on Your program with the right days.
+- [ ] Add, edit, swap and remove a workout on Your program; the 30-workout limit message appears at the limit.
+- [ ] With a muscle group logged yesterday, "Better fit today" shows on Your program; the swap starts the lighter workout in today's slot and today's day is marked done.
+- [ ] Train and Today show no plan lists or "start a plan" wording; with no active program Today asks to pick one.
+- [ ] Apple Watch and Wear OS Train pages list the active program's workouts, today's first, with the new "No workouts yet" and "This workout is not on your watch yet" texts (watch string edits are unbuilt and unverified).
+- [ ] Light/dark, 200% text and a tablet width for the builder, the day sheet and Your program.
