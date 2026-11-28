@@ -20,7 +20,6 @@ import 'template_test_support.dart';
 void main() {
   late Directory directory;
   late Store store;
-  late GoRouter currentRouter;
 
   setUp(() {
     directory = Directory.systemTemp.createTempSync('beyondrep-tpl-detail-');
@@ -79,7 +78,6 @@ void main() {
         ),
       ],
     );
-    currentRouter = router;
     addTearDown(router.dispose);
     await tester.pumpWidget(
       ProviderScope(
@@ -144,48 +142,14 @@ void main() {
     expect(copyButton, findsNothing);
   });
 
-  testWidgets('copying twice quickly makes one plan; a later copy numbers it', (
+  testWidgets('a workout is start-only: no copy button, no plan written', (
     tester,
   ) async {
-    final visited = await open(tester);
-    await tester.tap(copyButton);
-    await tester.tap(copyButton, warnIfMissed: false);
-    await tester.pumpAndSettle();
-    expect(plans(), 1);
-    expect(find.text('Saved to My Plans as Synthetic push'), findsOneWidget);
-    final plan = store.box<WorkoutPlanEntity>().getAll().single;
-    expect(plan.name, 'Synthetic push');
-    expect(store.box<PlanExerciseEntity>().count(), 2);
-
-    ScaffoldMessenger.of(tester.element(find.byType(TemplateDetailPage)))
-        .clearSnackBars();
-    await tester.pumpAndSettle();
-    await tester.tap(copyButton);
-    await tester.pumpAndSettle();
-    expect(plans(), 2);
-    expect(
-      find.text('Saved to My Plans as Synthetic push (2)'),
-      findsOneWidget,
-    );
-
-    await tester.tap(find.text('Edit'));
-    await tester.pumpAndSettle();
-    final second = store.box<WorkoutPlanEntity>().getAll().last;
-    expect(visited, ['edit ${second.uuid}']);
-  });
-
-  testWidgets('leaving the page takes its Saved snackbar away', (tester) async {
-    final visited = await open(tester);
-    await tester.tap(copyButton);
-    await tester.pumpAndSettle();
-    expect(find.text('Saved to My Plans as Synthetic push'), findsOneWidget);
-    currentRouter.go('/away');
-    await tester.pumpAndSettle();
-    expect(find.text('AWAY'), findsOneWidget);
-    expect(find.text('Saved to My Plans as Synthetic push'), findsNothing);
-    expect(find.text('Edit'), findsNothing);
-    expect(tester.takeException(), isNull);
-    expect(visited, isEmpty);
+    await open(tester);
+    expect(startButton, findsOneWidget);
+    expect(copyButton, findsNothing);
+    expect(find.textContaining('My Plans'), findsNothing);
+    expect(plans(), 0);
   });
 
   testWidgets('Start now opens the logger with a timed exercise in seconds', (
@@ -222,10 +186,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(visited, isEmpty);
     expect(
-      find.text(
-        'Could not start this workout. Check the plan and any unfinished '
-        'workout.',
-      ),
+      find.text('Could not start this workout. Check any unfinished workout.'),
       findsOneWidget,
     );
     expect(store.box<WorkoutSessionEntity>().count(), 1);
@@ -245,18 +206,12 @@ void main() {
           scrollable: find.byType(Scrollable).first,
         );
         await tester.scrollUntilVisible(
-          copyButton,
-          -300,
-          scrollable: find.byType(Scrollable).first,
-        );
-        await tester.scrollUntilVisible(
           startButton,
           -300,
           scrollable: find.byType(Scrollable).first,
         );
         expect(tester.takeException(), isNull);
         expect(startButton.hitTestable(), findsOneWidget);
-        expect(copyButton.hitTestable(), findsOneWidget);
       },
     );
   }

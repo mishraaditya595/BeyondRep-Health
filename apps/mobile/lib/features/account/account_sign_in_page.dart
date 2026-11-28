@@ -167,7 +167,7 @@ class _AccountSignInPageState extends State<AccountSignInPage> {
                                         title: 'Use another account and keep local data?',
                                         message:
                                             'Old workouts, unfinished sessions, '
-                                            'plans and pending uploads will remain '
+                                            'programs and pending uploads will remain '
                                             'on this device, locked to the original '
                                             'account. They will not be transferred '
                                             'to another account. If the original '
@@ -199,7 +199,7 @@ class _AccountSignInPageState extends State<AccountSignInPage> {
                                             'deletion was not confirmed. This will '
                                             'permanently erase this device’s '
                                             'original workouts, unfinished sessions, '
-                                            'custom plans and pending uploads, '
+                                            'programs and pending uploads, '
                                             'including items never backed up. '
                                             'It does not delete cloud data. '
                                             'Only choose this if you no longer '

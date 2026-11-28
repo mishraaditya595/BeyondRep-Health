@@ -178,52 +178,6 @@ void main() {
     });
   });
 
-  group('4: copying a template to My Plans', () {
-    ObjectBoxWorkoutLibraryRepository library() =>
-        ObjectBoxWorkoutLibraryRepository(store);
-
-    copy(String request, {void Function(String)? hook}) {
-      final repo = library()..debugCopyHook = hook;
-      return repo.copyCatalogTemplate(
-        requestUuid: request,
-        name: 'Push day',
-        description: 'Synthetic description.',
-        rows: [row('builtin.v1.synthetic-press')],
-        release: 4,
-      );
-    }
-
-    for (final step in ['exercises', 'plan', 'rows']) {
-      test('stopped after "$step": no plan after reopen, one after retry', () {
-        expect(
-          () => copy(
-            'req-1',
-            hook: (s) {
-              if (s == step) throw StateError('killed');
-            },
-          ),
-          throwsStateError,
-        );
-        reopen();
-        expect(store.box<WorkoutPlanEntity>().count(), 0);
-        expect(store.box<PlanExerciseEntity>().count(), 0);
-
-        copy('req-1');
-        reopen();
-        copy('req-1');
-        expect(store.box<WorkoutPlanEntity>().count(), 1);
-        expect(store.box<PlanExerciseEntity>().count(), 1);
-      });
-    }
-
-    test('killed after commit: the same request id gives the one plan', () {
-      copy('req-1');
-      reopen();
-      expect(copy('req-1').uuid, 'req-1');
-      expect(store.box<WorkoutPlanEntity>().count(), 1);
-    });
-  });
-
   group('5: catalogue cache on launch', () {
     late Directory cache;
     final r1 = snapshotJson();

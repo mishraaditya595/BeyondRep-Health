@@ -10,7 +10,6 @@ import 'package:beyondrep/features/train/exercise_detail_page.dart';
 import 'package:beyondrep/features/train/my_program_page.dart';
 import 'package:beyondrep/features/train/programs_page.dart';
 import 'package:beyondrep/features/train/workout_templates_page.dart';
-import 'package:beyondrep/features/workouts/data/workout_entities.dart';
 import 'package:beyondrep/objectbox.g.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -85,25 +84,16 @@ void main() {
     expect(find.text("Pick an exercise to see how it's done."), findsNothing);
   });
 
-  testWidgets(
-    'wide workouts list opens a template beside the list and Copy to My Plans '
-    'works there',
-    (tester) async {
-      await open(tester, '/train/workouts', _wide);
-      expect(
-        find.text('Pick a workout to see every exercise.'),
-        findsOneWidget,
-      );
-      await tapRow(tester, 'Synthetic push');
-      expect(path(tester), '/train/workouts');
-      final before = store.box<WorkoutPlanEntity>().count();
-      await tester.tap(find.text('Copy to My Plans'));
-      await tester.pumpAndSettle();
-      expect(store.box<WorkoutPlanEntity>().count(), before + 1);
-      expect(find.textContaining('Saved to My Plans'), findsOneWidget);
-      expect(find.byType(WorkoutTemplatesPage), findsOneWidget);
-    },
-  );
+  testWidgets('wide workouts list opens a template beside the list, start '
+      'only', (tester) async {
+    await open(tester, '/train/workouts', _wide);
+    expect(find.text('Pick a workout to see every exercise.'), findsOneWidget);
+    await tapRow(tester, 'Synthetic push');
+    expect(path(tester), '/train/workouts');
+    expect(find.text('Start now'), findsOneWidget);
+    expect(find.text('Copy to My Plans'), findsNothing);
+    expect(find.byType(WorkoutTemplatesPage), findsOneWidget);
+  });
 
   testWidgets('wide Add program from the pane keeps the programs list '
       'underneath', (tester) async {

@@ -1,5 +1,5 @@
-import 'package:beyondrep/core/clock.dart';
-import 'package:beyondrep/core/design/beyondrep_theme.dart';
+import 'dart:io';
+
 import 'package:beyondrep/features/health/application/health_overview.dart';
 import 'package:beyondrep/features/health/domain/energy.dart';
 import 'package:beyondrep/features/health/domain/readiness.dart';
@@ -7,24 +7,31 @@ import 'package:beyondrep/features/progress/domain/workout_history_models.dart';
 import 'package:beyondrep/features/progress/muscle_recovery.dart';
 import 'package:beyondrep/features/progress/workout_history_state.dart';
 import 'package:beyondrep/features/train/active_workout_state.dart';
-import 'package:beyondrep/features/train/train_page.dart';
-import 'package:beyondrep/features/train/train_library_state.dart';
+import 'package:beyondrep/features/programs/data/objectbox_program_repository.dart';
+import 'package:beyondrep/features/programs/domain/program_models.dart';
+import 'package:beyondrep/features/workouts/data/objectbox_workout_library_repository.dart';
+import 'package:beyondrep/objectbox.g.dart';
 import 'package:beyondrep/features/workouts/domain/workout_library_models.dart';
 import 'package:beyondrep/features/workouts/domain/workout_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 
 import '../support/fake_health_overview.dart';
+import 'program_test_support.dart';
 import '../support/health_overview_fixtures.dart';
 
 class _Actions implements WorkoutActions {
-  final started = <String>[];
+  final started = <({String? expected, String? swap})>[];
 
   @override
-  startPlan(String planUuid) {
-    started.add(planUuid);
+  startProgramDay(
+    TrainingProgramRecord program, {
+    required String? expectedPlanUuid,
+    DateTime? missedDate,
+    String? swapPlanUuid,
+  }) {
+    started.add((expected: expectedPlanUuid, swap: swapPlanUuid));
     throw StateError('synthetic: stop before navigation');
   }
 
@@ -65,32 +72,52 @@ Section<ReadinessOverview> _ready(int value) => SectionData(
 
 final _nowUtc = DateTime.utc(2026, 11, 24, 12);
 
-ExerciseRecord _ex(String uuid, String group) => ExerciseRecord(
-  uuid: uuid,
-  name: 'Move $uuid',
+CatalogDefinitionInput _def(
+  String id,
+  String group, {
+  List<String> primary = const [],
+}) => (
+  id: id,
+  name: 'Move $id',
   muscleGroup: group,
   equipment: 'Barbell',
-  movementCategory: 'Push',
-  inputMode: 'weightReps',
-  isBuiltIn: false,
-  updatedAtMs: 0,
+  category: 'push_horizontal',
+  mode: 'reps_load',
+  primaryMuscles: primary,
+  secondaryMuscles: const [],
 );
 
-WorkoutPlanRecord _plan(String uuid, String name, String exercise, int sets) =>
-    WorkoutPlanRecord(
-      uuid: uuid,
-      name: name,
-      description: '',
-      updatedAtMs: 0,
-      exercises: [
-        PlanExerciseRecord(
-          uuid: '$uuid-0',
-          exerciseUuid: exercise,
-          position: 0,
-          targetSets: sets,
-        ),
-      ],
-    );
+TemplateWorkoutSource _workout(
+  String name,
+  List<(CatalogDefinitionInput, int)> rows,
+) => TemplateWorkoutSource(
+  name: name,
+  description: '',
+  release: 4,
+  rows: [
+    for (final (def, sets) in rows)
+      (
+        exercise: def,
+        sets: sets,
+        repsMin: 8,
+        repsMax: 10,
+        durationSeconds: null,
+        restSeconds: 90,
+        note: '',
+      ),
+  ],
+);
+
+final _bench = _def('bench', 'Chest');
+final _squat = _def('squat', 'Legs');
+final _plank = _def('plank', 'Core');
+final _stretch = _def('stretch', 'Mobility');
+final _row = _def('row', 'Back');
+
+final _push = _workout('Push day', [(_bench, 8)]);
+final _legs = _workout('Leg day', [(_squat, 12)]);
+final _core = _workout('Core day', [(_plank, 4)]);
+final _mobility = _workout('Mobility day', [(_stretch, 3)]);
 
 /// A completed workout of [group] finished [hoursAgo] before [_nowUtc].
 WorkoutSessionRecord _done(String group, int hoursAgo) {
@@ -128,79 +155,59 @@ WorkoutSessionRecord _done(String group, int hoursAgo) {
   );
 }
 
-final _exercises = [
-  _ex('bench', 'Chest'),
-  _ex('squat', 'Legs'),
-  _ex('plank', 'Core'),
-  _ex('stretch', 'Mobility'),
-  _ex('row', 'Back'),
-];
-
-final _push = _plan('push', 'Push day', 'bench', 8);
-final _legs = _plan('legs', 'Leg day', 'squat', 12);
-final _core = _plan('core', 'Core day', 'plank', 4);
-final _mobility = _plan('mob', 'Mobility day', 'stretch', 3);
-
 late _Actions _actions;
+late Directory _directory;
+late Store _store;
 
+/// Seeds an active program (first day Tuesday, so today, Tuesday 24 November,
+/// is its first day) and opens Your program.
 Future<void> _pump(
   WidgetTester tester, {
-  required List<WorkoutPlanRecord> plans,
-  List<ExerciseRecord>? exercises,
+  required List<TemplateWorkoutSource> workouts,
+  List<int?>? week,
+  bool active = true,
   Object? history, // a snapshot, or an error to throw
   MuscleRecovery? recovery,
   FakeHealthOverviewController? health,
   double textScale = 1,
   Brightness brightness = Brightness.light,
+  void Function()? afterSeed,
 }) async {
   _actions = _Actions();
-  tester.view.physicalSize = const Size(390, 2400);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.resetPhysicalSize);
-  addTearDown(tester.view.resetDevicePixelRatio);
-  final router = GoRouter(
-    routes: [
-      GoRoute(
-        path: '/',
-        builder: (_, _) => const Scaffold(body: TrainPage()),
+  final created = ObjectBoxProgramRepository(_store).createProgram(
+    requestUuid: 'fit-program',
+    name: 'Fit program',
+    description: '',
+    workouts: workouts,
+    week: week ?? [for (var i = 0; i < 7; i++) i < workouts.length ? i : null],
+    firstDayWeekday: 2,
+    makeActive: active,
+    localToday: DateTime(2026, 11, 24),
+  );
+  afterSeed?.call();
+  await pumpPrograms(
+    tester,
+    store: _store,
+    directory: _directory,
+    initial: '/train/program/${created.uuid}',
+    now: DateTime(2026, 11, 24, 9),
+    textScale: textScale,
+    brightness: brightness,
+    health: health,
+    overrides: [
+      progressNowProvider.overrideWithValue(_nowUtc),
+      workoutActionsProvider.overrideWithValue(_actions),
+      completedWorkoutHistoryProvider.overrideWith((ref) async {
+        if (history is WorkoutHistorySnapshot) return history;
+        throw StateError('history failed');
+      }),
+      activeWorkoutProvider.overrideWith(
+        (ref) => const AsyncData<ActiveWorkoutView?>(null),
       ),
+      if (recovery != null) muscleRecoveryProvider.overrideWithValue(recovery),
     ],
   );
-  addTearDown(router.dispose);
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        fakeHealthOverview(health ?? FakeHealthOverviewController(null)),
-        localNowProvider.overrideWithValue(DateTime(2026, 11, 24, 9)),
-        progressNowProvider.overrideWithValue(_nowUtc),
-        workoutActionsProvider.overrideWithValue(_actions),
-        trainLibraryProvider.overrideWith(
-          (ref) async => WorkoutLibrarySnapshot(
-            exercises: exercises ?? _exercises,
-            plans: plans,
-          ),
-        ),
-        completedWorkoutHistoryProvider.overrideWith((ref) async {
-          if (history is WorkoutHistorySnapshot) return history;
-          throw StateError('history failed');
-        }),
-        activeWorkoutProvider.overrideWith(
-          (ref) => const AsyncData<ActiveWorkoutView?>(null),
-        ),
-        if (recovery != null)
-          muscleRecoveryProvider.overrideWithValue(recovery),
-      ],
-      child: MaterialApp.router(
-        theme: BeyondRepTheme.build(brightness),
-        routerConfig: router,
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context)
-              .copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
-        ),
-      ),
-    ),
-  );
+  tester.view.physicalSize = Size(390, textScale > 1 ? 4000 : 2400);
   await tester.pumpAndSettle();
 }
 
@@ -212,43 +219,98 @@ WorkoutHistorySnapshot _chestDone() =>
     WorkoutHistorySnapshot(sessions: [_done('Chest', 6)]);
 
 void main() {
+  setUp(() {
+    _directory = Directory.systemTemp.createTempSync('beyondrep-fit-');
+    _store = Store(getObjectBoxModel(), directory: _directory.path);
+  });
+
+  tearDown(() {
+    _store.close();
+    _directory.deleteSync(recursive: true);
+  });
+
+  String planUuidNamed(String name) =>
+      ObjectBoxProgramRepository(_store)
+          .programPlans('fit-program')
+          .firstWhere((p) => p.name == name)
+          .uuid;
+
   testWidgets('a clear winner shows the card with reason and Start', (
     tester,
   ) async {
-    await _pump(tester, plans: [_push, _legs], history: _chestDone());
+    await _pump(tester, workouts: [_push, _legs], history: _chestDone());
     expect(find.text('Better fit today'), findsOneWidget);
     expect(
-      find.text('Chest still recovering · this plan rests them'),
+      find.text('Chest still recovering · this workout rests them'),
       findsOneWidget,
     );
     expect(find.text('Start'), findsOneWidget);
-    // No outer label that would repeat the plan name and reason: the tag,
-    // the card and Start each read once, in order.
     expect(
-      find.bySemanticsLabel(RegExp('Better fit today: Leg day')),
-      findsNothing,
-    );
-    expect(
-      find.bySemanticsLabel(RegExp('Chest still recovering · this plan')),
+      find.bySemanticsLabel(RegExp('Chest still recovering · this workout')),
       findsOneWidget,
     );
   });
 
-  testWidgets('plans of backfilled built-ins name specific muscles', (
+  testWidgets('Start on the card swaps in the suggested workout', (
     tester,
   ) async {
-    ExerciseRecord builtIn(String id, String group, List<String> primary) =>
-        ExerciseRecord(
-          uuid: id,
-          name: 'Move $id',
-          muscleGroup: group,
-          equipment: 'Barbell',
-          movementCategory: 'Hinge',
-          inputMode: 'reps_load',
-          isBuiltIn: true,
-          updatedAtMs: 0,
-          primaryMuscles: primary,
-        );
+    await _pump(tester, workouts: [_push, _legs], history: _chestDone());
+    await tester.tap(find.text('Start'));
+    await tester.pumpAndSettle();
+    expect(_actions.started.single.swap, planUuidNamed('Leg day'));
+    expect(_actions.started.single.expected, planUuidNamed('Push day'));
+  });
+
+  testWidgets('no card when the suggestion is today\'s own workout', (
+    tester,
+  ) async {
+    await _pump(tester, workouts: [_legs, _push], history: _chestDone());
+    expect(find.text('Better fit today'), findsNothing);
+  });
+
+  testWidgets('an inactive program shows no card', (tester) async {
+    await _pump(
+      tester,
+      workouts: [_push, _legs],
+      active: false,
+      history: _chestDone(),
+    );
+    expect(find.text('Better fit today'), findsNothing);
+  });
+
+  testWidgets('saved workouts outside the program are never suggested', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      workouts: [_push, _legs],
+      history: _chestDone(),
+      afterSeed: () => ObjectBoxWorkoutLibraryRepository(_store).savePlan(
+        uuid: 'own',
+        name: 'Standalone legs',
+        description: '',
+        exercises: const [
+          PlanExerciseRecord(
+            uuid: 'own-0',
+            exerciseUuid: 'squat',
+            position: 0,
+            targetSets: 12,
+            targetRepsMin: 8,
+            targetRepsMax: 10,
+          ),
+        ],
+      ),
+    );
+    // An identical saved workout would tie with Leg day and hide the card.
+    expect(find.text('Better fit today'), findsOneWidget);
+    expect(find.text('Standalone legs'), findsNothing);
+  });
+
+  testWidgets('workouts of backfilled built-ins name specific muscles', (
+    tester,
+  ) async {
+    final rdl = _def('rdl', 'Legs', primary: ['hamstrings', 'glutes']);
+    final bench = _def('bench2', 'Chest', primary: ['chest']);
     final rdlDone = _done('Legs', 6);
     final session = WorkoutSessionRecord(
       uuid: rdlDone.uuid,
@@ -272,14 +334,11 @@ void main() {
     );
     await _pump(
       tester,
-      exercises: [
-        builtIn('rdl', 'Legs', ['hamstrings', 'glutes']),
-        builtIn('bench', 'Chest', ['chest']),
+      workouts: [
+        _workout('RDL day', [(rdl, 9)]),
+        _workout('Push', [(bench, 8)]),
       ],
-      plans: [
-        _plan('rdl', 'RDL day', 'rdl', 9),
-        _plan('push', 'Push', 'bench', 8),
-      ],
+      week: const [0, 1, null, null, null, null, null],
       history: WorkoutHistorySnapshot(sessions: [session]),
     );
     expect(find.text('Better fit today'), findsOneWidget);
@@ -287,41 +346,34 @@ void main() {
     expect(find.textContaining('Legs still recovering'), findsNothing);
   });
 
-  testWidgets('Start on the card starts the suggested plan', (tester) async {
-    await _pump(tester, plans: [_push, _legs], history: _chestDone());
-    await tester.tap(find.text('Start'));
-    await tester.pumpAndSettle();
-    expect(_actions.started, ['legs']);
-  });
-
-  testWidgets('a low readiness day picks the lightest recovered plan', (
+  testWidgets('a low readiness day picks the lightest recovered workout', (
     tester,
   ) async {
     await _pump(
       tester,
-      plans: [_push, _legs, _core],
+      workouts: [_push, _legs, _core],
       history: _chestDone(),
       health: FakeHealthOverviewController(overview(readiness: _ready(48))),
     );
     expect(find.text('Better fit today'), findsOneWidget);
     expect(
       find.text(
-        'Lightest plan with recovered muscles · keep effort around RPE 7',
+        'Lightest workout with recovered muscles · keep effort around RPE 7',
       ),
       findsOneWidget,
     );
     await tester.tap(find.text('Start'));
     await tester.pumpAndSettle();
-    expect(_actions.started, ['core']);
+    expect(_actions.started.single.swap, planUuidNamed('Core day'));
   });
 
-  testWidgets('good start drained to low energy picks the lightest plan', (
+  testWidgets('good start drained to low energy picks the lightest workout', (
     tester,
   ) async {
     final start = _ready(80);
     await _pump(
       tester,
-      plans: [_push, _legs, _core],
+      workouts: [_push, _legs, _core],
       history: _chestDone(),
       health: FakeHealthOverviewController(
         overview(
@@ -341,7 +393,7 @@ void main() {
     );
     expect(
       find.text(
-        'Lightest plan with recovered muscles · keep effort around RPE 7',
+        'Lightest workout with recovered muscles · keep effort around RPE 7',
       ),
       findsOneWidget,
     );
@@ -353,7 +405,7 @@ void main() {
     final start = _ready(40);
     await _pump(
       tester,
-      plans: [_push, _legs, _core],
+      workouts: [_push, _legs, _core],
       history: _chestDone(),
       health: FakeHealthOverviewController(
         overview(
@@ -371,44 +423,31 @@ void main() {
       ),
     );
     expect(
-      find.textContaining('Lightest plan with recovered muscles'),
+      find.textContaining('Lightest workout with recovered muscles'),
       findsNothing,
     );
   });
 
-  testWidgets('recovery lines read Recovered and Legs recovering', (
-    tester,
-  ) async {
+  testWidgets('day rows read Recovered and Legs recovering', (tester) async {
     await _pump(
       tester,
-      plans: [_push, _legs],
+      workouts: [_push, _legs],
       history: WorkoutHistorySnapshot(sessions: [_done('Legs', 6)]),
     );
-    expect(find.textContaining('Legs recovering'), findsOneWidget);
-    expect(find.textContaining('Recovered'), findsOneWidget);
-    expect(find.text('Move bench\nRecovered'), findsOneWidget);
-    expect(find.text('Move squat\nLegs recovering'), findsOneWidget);
+    expect(find.text('Day 1\nRecovered'), findsOneWidget);
+    expect(find.text('Day 2\nLegs recovering'), findsOneWidget);
   });
 
   testWidgets('four recovering groups read "A, B, C and more"', (tester) async {
-    final all = WorkoutPlanRecord(
-      uuid: 'all',
-      name: 'Everything',
-      description: '',
-      updatedAtMs: 0,
-      exercises: [
-        for (final (i, e) in ['bench', 'squat', 'plank', 'row'].indexed)
-          PlanExerciseRecord(
-            uuid: 'all-$i',
-            exerciseUuid: e,
-            position: i,
-            targetSets: 3,
-          ),
-      ],
-    );
+    final all = _workout('Everything', [
+      (_bench, 3),
+      (_squat, 3),
+      (_plank, 3),
+      (_row, 3),
+    ]);
     await _pump(
       tester,
-      plans: [all],
+      workouts: [all],
       history: _anyHistory(),
       recovery: const MuscleRecovery({
         Muscle.chest: 0.5,
@@ -428,41 +467,44 @@ void main() {
   ) async {
     await _pump(
       tester,
-      plans: [_legs],
+      workouts: [_legs],
       history: _anyHistory(),
       recovery: const MuscleRecovery(
         {Muscle.quads: 0.09, Muscle.hamstrings: 0.09},
         groups: {'Legs': 0.09},
       ),
     );
-    expect(find.text('Move squat\nRecovered'), findsOneWidget);
+    expect(find.text('Day 1\nRecovered'), findsOneWidget);
+  });
+
+  testWidgets('a group at 0.11 reads recovering', (tester) async {
     await _pump(
       tester,
-      plans: [_legs],
+      workouts: [_legs],
       history: _anyHistory(),
       recovery: const MuscleRecovery(
         {Muscle.quads: 0.11},
         groups: {'Legs': 0.11},
       ),
     );
-    expect(find.text('Move squat\nLegs recovering'), findsOneWidget);
+    expect(find.text('Day 1\nLegs recovering'), findsOneWidget);
   });
 
-  testWidgets('yesterday\'s low readiness does not pick the lightest plan', (
+  testWidgets('yesterday\'s low readiness does not pick the lightest workout', (
     tester,
   ) async {
     await _pump(
       tester,
-      plans: [_push, _legs],
+      workouts: [_push, _legs],
       history: _chestDone(),
       health: FakeHealthOverviewController(
         overview(readiness: _ready(48), readAt: DateTime(2026, 11, 23, 20)),
       ),
     );
-    expect(find.textContaining('Lightest plan'), findsNothing);
+    expect(find.textContaining('Lightest workout'), findsNothing);
     expect(find.text('Better fit today'), findsOneWidget);
     expect(
-      find.text('Chest still recovering · this plan rests them'),
+      find.text('Chest still recovering · this workout rests them'),
       findsOneWidget,
     );
   });
@@ -472,7 +514,7 @@ void main() {
   ) async {
     await _pump(
       tester,
-      plans: [_legs],
+      workouts: [_legs],
       history: const WorkoutHistorySnapshot(sessions: []),
     );
     expect(find.text('Better fit today'), findsNothing);
@@ -481,18 +523,20 @@ void main() {
   });
 
   testWidgets('a history error shows no card and no lines', (tester) async {
-    await _pump(tester, plans: [_push, _legs], history: StateError('x'));
+    await _pump(tester, workouts: [_push, _legs], history: StateError('x'));
     expect(find.text('Better fit today'), findsNothing);
     expect(find.textContaining('Recovered'), findsNothing);
     expect(find.textContaining('recovering'), findsNothing);
-    expect(find.text('Push day'), findsOneWidget);
+    expect(find.text('Tuesday · Push day'), findsOneWidget);
   });
 
-  testWidgets('a plan with only unmapped muscles gets no line', (tester) async {
-    await _pump(tester, plans: [_push, _mobility], history: _chestDone());
+  testWidgets('a workout with only unmapped muscles gets no line', (
+    tester,
+  ) async {
+    await _pump(tester, workouts: [_push, _mobility], history: _chestDone());
     expect(find.textContaining('Chest recovering'), findsOneWidget);
     final row = find.ancestor(
-      of: find.text('Mobility day'),
+      of: find.text('Wednesday · Mobility day'),
       matching: find.byType(Card),
     );
     expect(
@@ -504,7 +548,7 @@ void main() {
   testWidgets('a health overview error still shows plan fit', (tester) async {
     await _pump(
       tester,
-      plans: [_push, _legs],
+      workouts: [_push, _legs],
       history: _chestDone(),
       health: _Failing(),
     );
@@ -516,18 +560,12 @@ void main() {
     testWidgets('fits 2x text at 390 px, $brightness', (tester) async {
       await _pump(
         tester,
-        plans: [_push, _legs],
+        workouts: [_push, _legs],
         history: _chestDone(),
         textScale: 2,
         brightness: brightness,
       );
-      // The Train header row already overflows by 204 px at 2x on `main`;
-      // the new card and recovery lines must add no other exception.
-      Object? error;
-      while ((error = tester.takeException()) != null) {
-        expect('$error', contains('overflowed by 204 pixels'));
-      }
-      await tester.scrollUntilVisible(find.text('Start'), 300);
+      expect(tester.takeException(), isNull);
       expect(find.text('Better fit today'), findsOneWidget);
     });
   }

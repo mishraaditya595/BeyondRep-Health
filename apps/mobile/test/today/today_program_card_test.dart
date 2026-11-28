@@ -126,6 +126,7 @@ class _FakeActions implements WorkoutActions {
     TrainingProgramRecord program, {
     required String? expectedPlanUuid,
     DateTime? missedDate,
+    String? swapPlanUuid,
   }) {
     if (failWith != null) throw failWith!;
     calls.add(_Call(program, expectedPlanUuid, missedDate));
@@ -197,6 +198,7 @@ void main() {
           localNowProvider.overrideWithValue(week?.localToday ?? _wednesday),
           activeWorkoutProvider.overrideWithValue(unfinished),
           workoutActionsProvider.overrideWithValue(actions),
+          programsLoadFailedProvider.overrideWithValue(false),
           programWeekProvider.overrideWith((ref) {
             onWeekBuilt?.call();
             return week;
@@ -398,14 +400,15 @@ void main() {
     expect(pushed, isEmpty);
   });
 
-  testWidgets('without an active program the Next up hero is unchanged', (
+  testWidgets('without an active program the hero says No program yet', (
     tester,
   ) async {
     await show(tester, libraryPlans: [_plan('a', 'Own plan', 2)]);
-    expect(find.text('NEXT UP'), findsOneWidget);
-    expect(find.text('Own plan'), findsOneWidget);
+    expect(find.text('GET STARTED'), findsOneWidget);
+    expect(find.text('No program yet'), findsOneWidget);
+    expect(find.text('Own plan'), findsNothing);
     expect(find.textContaining('TODAY ·'), findsNothing);
-    expect(find.text('Start workout'), findsOneWidget);
+    expect(find.text('Start workout'), findsNothing);
   });
 
   testWidgets('an unfinished workout comes before the program', (tester) async {

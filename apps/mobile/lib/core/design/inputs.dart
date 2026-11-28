@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'beyondrep_theme.dart';
+
 /// The only text input for BeyondRep screens, dialogs and sheets. Look comes
 /// from `BeyondRepTheme` (filled, rounded, accent focus ring); do not restyle
 /// per screen and do not use a raw `TextField`/`TextFormField` in features.
@@ -226,6 +228,81 @@ class NsCheckButton extends StatelessWidget {
                       ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A label (with optional subtitle) and a switch, the only on/off setting row
+/// for features: the whole row is the touch target (at least 48 dp) and reads
+/// as one switch to screen readers. Look comes from the theme's
+/// `switchTheme`; a null [onChanged] disables it.
+class NsSwitchRow extends StatelessWidget {
+  const NsSwitchRow({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    this.subtitle,
+    super.key,
+  });
+
+  final String label;
+  final String? subtitle;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted =
+        theme.extension<BeyondRepColors>()?.muted ??
+        theme.colorScheme.onSurfaceVariant;
+    final enabled = onChanged != null;
+    return Semantics(
+      container: true,
+      toggled: value,
+      enabled: enabled,
+      label: [label, ?subtitle].join('. '),
+      onTap: enabled ? () => onChanged!(!value) : null,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: enabled ? () => onChanged!(!value) : null,
+        borderRadius: BorderRadius.circular(14),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Row(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (subtitle != null)
+                        Text(
+                          subtitle!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: muted,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ExcludeSemantics(
+                child: Switch(value: value, onChanged: onChanged),
+              ),
+            ],
           ),
         ),
       ),

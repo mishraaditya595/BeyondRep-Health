@@ -185,17 +185,7 @@ class ObjectBoxProgramRepository implements ProgramRepository {
         }
       }
       debugImportHook?.call('rows');
-      final taken = {
-        for (final p in _programs.getAll())
-          if (p.archivedAtMs == null) p.name.trim().toLowerCase(),
-      };
-      var unique = label;
-      for (var n = 2; taken.contains(unique.toLowerCase()); n++) {
-        final suffix = ' ($n)';
-        final room = 100 - suffix.length;
-        unique =
-            '${label.length > room ? label.substring(0, room).trimRight() : label}$suffix';
-      }
+      final unique = _uniqueName(label);
       if (makeActive) _deactivateAll(now);
       final entity = TrainingProgramEntity(
         uuid: requestUuid,
@@ -225,6 +215,353 @@ class ObjectBoxProgramRepository implements ProgramRepository {
       debugImportHook?.call('days');
       return _record(entity);
     });
+  }
+
+  /// [label] made unique among live program names by adding " (n)".
+  String _uniqueName(String label, {String? exceptUuid}) {
+    final taken = {
+      for (final p in _programs.getAll())
+        if (p.archivedAtMs == null && p.uuid != exceptUuid)
+          p.name.trim().toLowerCase(),
+    };
+    var unique = label;
+    for (var n = 2; taken.contains(unique.toLowerCase()); n++) {
+      final suffix = ' ($n)';
+      final room = 100 - suffix.length;
+      unique =
+          '${label.length > room ? label.substring(0, room).trimRight() : label}$suffix';
+    }
+    return unique;
+  }
+
+  /// A source's name and description, checked before any write.
+  ({String name, String description}) _sourceText(ProgramWorkoutSource s) {
+    final (name, description) = switch (s) {
+      DraftWorkoutSource() => (s.name, s.description),
+      TemplateWorkoutSource() => (s.name, s.description),
+      CopyWorkoutSource() => ('', ''),
+    };
+    return (name: name.trim(), description: _clip(description));
+  }
+
+  /// Validates a row and its exercise: it exists and the targets match its
+  /// input mode (seconds for timed exercises, reps otherwise).
+  void _checkRow(PlanExerciseRecord r) {
+    r.validate();
+    final definition = _store
+        .box<ExerciseDefinitionEntity>()
+        .query(ExerciseDefinitionEntity_.uuid.equals(r.exerciseUuid))
+        .build();
+    final ExerciseDefinitionEntity? found;
+    try {
+      found = definition.findFirst();
+    } finally {
+      definition.close();
+    }
+    if (found == null) {
+      throw StateError('Workout refers to an unknown exercise');
+    }
+    final timed = found.inputMode == 'duration';
+    if (timed && (r.targetRepsMin != null || r.targetRepsMax != null)) {
+      throw ArgumentError('Timed exercise targets seconds, not reps');
+    }
+    if (!timed && r.targetDurationSeconds != null) {
+      throw ArgumentError('Rep exercise targets reps, not seconds');
+    }
+  }
+
+  /// True when [exerciseUuid] is a timed (duration) exercise.
+  bool _isTimed(String exerciseUuid) {
+    final q = _store
+        .box<ExerciseDefinitionEntity>()
+        .query(ExerciseDefinitionEntity_.uuid.equals(exerciseUuid))
+        .build();
+    try {
+      return q.findFirst()?.inputMode == 'duration';
+    } finally {
+      q.close();
+    }
+  }
+
+  /// Rows of [s] ready to write under a new plan. Runs inside the write
+  /// transaction: template exercises are materialized, copies read the live
+  /// source plan. Returns the plan name and description too.
+  ({String name, String description, List<PlanExerciseRecord> items}) _resolve(
+    ProgramWorkoutSource s,
+  ) {
+    switch (s) {
+      case DraftWorkoutSource():
+        final text = _sourceText(s);
+        if (text.name.isEmpty ||
+            text.name.length > 100 ||
+            s.rows.length > 100) {
+          throw ArgumentError('Invalid workout name or size');
+        }
+        final items = <PlanExerciseRecord>[];
+        for (var i = 0; i < s.rows.length; i++) {
+          final r = s.rows[i];
+          _checkRow(r);
+          items.add(
+            PlanExerciseRecord(
+              uuid: _ids.newId(),
+              exerciseUuid: r.exerciseUuid,
+              position: i,
+              targetSets: r.targetSets,
+              targetRepsMin: r.targetRepsMin,
+              targetRepsMax: r.targetRepsMax,
+              targetDurationSeconds: r.targetDurationSeconds,
+              restSeconds: r.restSeconds,
+              notes: r.notes.trim(),
+            ),
+          );
+        }
+        return (name: text.name, description: text.description, items: items);
+      case TemplateWorkoutSource():
+        final text = _sourceText(s);
+        if (text.name.isEmpty ||
+            text.name.length > 100 ||
+            s.rows.isEmpty ||
+            s.rows.length > 100) {
+          throw ArgumentError('Invalid template workout');
+        }
+        final items = _library.planItemsFromRows(s.rows);
+        for (final row in s.rows) {
+          _library.materializeInTransaction(row.exercise, s.release);
+        }
+        return (name: text.name, description: text.description, items: items);
+      case CopyWorkoutSource():
+        final source = _library.getPlan(s.planUuid);
+        if (source == null) throw ArgumentError('Workout to copy is missing');
+        return (
+          name: source.name,
+          description: source.description,
+          items: [
+            for (final row in source.exercises)
+              () {
+                // Rows saved before timed sets carry rep targets on a timed
+                // exercise: use the editor's 30 s default for them.
+                final legacy =
+                    row.targetDurationSeconds == null &&
+                    _isTimed(row.exerciseUuid);
+                final copy = PlanExerciseRecord(
+                  uuid: _ids.newId(),
+                  exerciseUuid: row.exerciseUuid,
+                  position: row.position,
+                  targetSets: row.targetSets,
+                  targetRepsMin: legacy ? null : row.targetRepsMin,
+                  targetRepsMax: legacy ? null : row.targetRepsMax,
+                  targetDurationSeconds: legacy
+                      ? 30
+                      : row.targetDurationSeconds,
+                  restSeconds: row.restSeconds,
+                  notes: row.notes,
+                );
+                _checkRow(copy);
+                return copy;
+              }(),
+          ],
+        );
+    }
+  }
+
+  void _putPlan(
+    String uuid,
+    String programUuid,
+    String name,
+    String text,
+    int now,
+  ) {
+    _plans.put(
+      WorkoutPlanEntity(
+        uuid: uuid,
+        name: name,
+        description: text,
+        createdAtMs: now,
+        updatedAtMs: now,
+        programUuid: programUuid,
+      ),
+    );
+  }
+
+  void _putItems(String planUuid, List<PlanExerciseRecord> items) {
+    for (final item in items) {
+      _items.put(
+        PlanExerciseEntity(
+          uuid: item.uuid,
+          planUuid: planUuid,
+          exerciseUuid: item.exerciseUuid,
+          position: item.position,
+          targetSets: item.targetSets,
+          targetRepsMin: item.targetRepsMin,
+          targetRepsMax: item.targetRepsMax,
+          targetDurationSeconds: item.targetDurationSeconds,
+          restSeconds: item.restSeconds,
+          notes: item.notes.trim(),
+        ),
+      );
+    }
+  }
+
+  @override
+  TrainingProgramRecord createProgram({
+    required String requestUuid,
+    required String name,
+    required String description,
+    required List<ProgramWorkoutSource> workouts,
+    required List<int?> week,
+    required int firstDayWeekday,
+    required bool makeActive,
+    required DateTime localToday,
+  }) {
+    final label = name.trim();
+    if (requestUuid.isEmpty ||
+        label.isEmpty ||
+        label.length > 100 ||
+        week.length != 7 ||
+        firstDayWeekday < 1 ||
+        firstDayWeekday > 7) {
+      throw ArgumentError('Invalid program');
+    }
+    if (workouts.length > maxProgramWorkouts) {
+      throw const ProgramWorkoutLimit();
+    }
+    final used = <int>{};
+    for (final index in week) {
+      if (index == null) continue;
+      if (index < 0 || index >= workouts.length) {
+        throw ArgumentError('Day names an unknown workout');
+      }
+      used.add(index);
+    }
+    if (used.isEmpty || used.length != workouts.length) {
+      throw ArgumentError(
+        'A program needs a training day and no unused workout',
+      );
+    }
+    return _store.runInTransaction(TxMode.write, () {
+      final existing = _byUuid(requestUuid);
+      if (existing != null) return _record(existing);
+      final resolved = [for (final w in workouts) _resolve(w)];
+      debugImportHook?.call('exercises');
+      final now = _now();
+      final planUuids = [for (final _ in resolved) _ids.newId()];
+      for (var i = 0; i < resolved.length; i++) {
+        _putPlan(
+          planUuids[i],
+          requestUuid,
+          resolved[i].name,
+          resolved[i].description,
+          now,
+        );
+      }
+      debugImportHook?.call('plans');
+      for (var i = 0; i < resolved.length; i++) {
+        _putItems(planUuids[i], resolved[i].items);
+      }
+      debugImportHook?.call('rows');
+      final unique = _uniqueName(label);
+      if (makeActive) _deactivateAll(now);
+      final entity = TrainingProgramEntity(
+        uuid: requestUuid,
+        name: unique,
+        description: _clip(description),
+        sourceId: customProgramSourceId,
+        sourceRelease: 0,
+        firstDayWeekday: firstDayWeekday,
+        isActive: makeActive,
+        activatedLocalDate: makeActive ? localDateKey(localToday) : null,
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+      _programs.put(entity);
+      debugImportHook?.call('program');
+      for (var i = 0; i < 7; i++) {
+        final index = week[i];
+        _days.put(
+          ProgramDayEntity(
+            uuid: _ids.newId(),
+            programUuid: requestUuid,
+            dayIndex: i,
+            planUuid: index == null ? null : planUuids[index],
+          ),
+        );
+      }
+      debugImportHook?.call('days');
+      return _record(entity);
+    });
+  }
+
+  @override
+  void updateDetails(
+    String programUuid, {
+    required String name,
+    required String description,
+  }) {
+    final label = name.trim();
+    if (label.isEmpty || label.length > 100) {
+      throw ArgumentError('Invalid program name');
+    }
+    _store.runInTransaction(TxMode.write, () {
+      final program = _live(programUuid);
+      program.name = _uniqueName(label, exceptUuid: programUuid);
+      program.description = _clip(description);
+      program.updatedAtMs = _now();
+      _programs.put(program);
+    });
+  }
+
+  @override
+  String addWorkout(
+    String programUuid,
+    ProgramWorkoutSource source, {
+    required int dayIndex,
+    required String requestUuid,
+  }) {
+    if (dayIndex < 0 || dayIndex > 6) throw ArgumentError('Invalid day');
+    return _store.runInTransaction(TxMode.write, () {
+      final program = _live(programUuid);
+      // A repeated request returns the workout it already made.
+      if (_plansOf(programUuid).any((p) => p.uuid == requestUuid)) {
+        return requestUuid;
+      }
+      final live = _plansOf(programUuid).where((p) => p.archivedAtMs == null);
+      if (live.length >= maxProgramWorkouts) {
+        throw const ProgramWorkoutLimit();
+      }
+      final resolved = _resolve(source);
+      final now = _now();
+      _putPlan(
+        requestUuid,
+        programUuid,
+        resolved.name,
+        resolved.description,
+        now,
+      );
+      _putItems(requestUuid, resolved.items);
+      _assignDay(programUuid, dayIndex, requestUuid, now);
+      program.updatedAtMs = now;
+      _programs.put(program);
+      return requestUuid;
+    });
+  }
+
+  /// Points a day at [planUuid] and archives the workout it used before when
+  /// no other day uses it. Runs inside a write transaction.
+  void _assignDay(String programUuid, int dayIndex, String? planUuid, int now) {
+    final days = _daysOf(programUuid);
+    final day = days.firstWhere((d) => d.dayIndex == dayIndex);
+    final old = day.planUuid;
+    day.planUuid = planUuid;
+    _days.put(day);
+    if (old == null || old == planUuid) return;
+    if (days.any((d) => d.dayIndex != dayIndex && d.planUuid == old)) return;
+    for (final plan in _plansOf(programUuid)) {
+      if (plan.uuid == old && plan.archivedAtMs == null) {
+        plan.archivedAtMs = now;
+        plan.updatedAtMs = now;
+        _plans.put(plan);
+      }
+    }
   }
 
   /// At most 1000 characters, never splitting a surrogate pair.
@@ -285,11 +622,9 @@ class ObjectBoxProgramRepository implements ProgramRepository {
           ).any((plan) => plan.uuid == planUuid && plan.archivedAtMs == null)) {
         throw ArgumentError('Plan does not belong to this program');
       }
-      final day = _daysOf(programUuid)
-          .firstWhere((d) => d.dayIndex == dayIndex);
-      day.planUuid = planUuid;
-      _days.put(day);
-      program.updatedAtMs = _now();
+      final now = _now();
+      _assignDay(programUuid, dayIndex, planUuid, now);
+      program.updatedAtMs = now;
       _programs.put(program);
     });
   }

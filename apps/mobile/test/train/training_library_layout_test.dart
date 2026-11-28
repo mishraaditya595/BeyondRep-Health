@@ -43,7 +43,7 @@ void main() {
     ),
     'template detail': (
       location: '/train/workouts/tpl.push',
-      action: 'Copy to My Plans',
+      action: 'Start now',
       tip: null,
     ),
     'programs list': (

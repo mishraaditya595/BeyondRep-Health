@@ -10,7 +10,7 @@ import '../domain/readiness.dart';
 const _lowTitle = 'Energy is low right now';
 const _advice =
     'Consider dropping a set per exercise or keeping effort around RPE 7.';
-const _plansUnchanged = 'Your plans are not changed';
+const _plansUnchanged = 'Your workouts are not changed';
 
 /// In-memory flag: the owner and local day the low-energy note was last
 /// shown before a workout start. Never persisted.

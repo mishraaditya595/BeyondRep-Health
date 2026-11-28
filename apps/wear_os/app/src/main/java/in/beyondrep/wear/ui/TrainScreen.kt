@@ -53,7 +53,7 @@ fun TrainScreen(
         if (ui.plans.isEmpty() && ui.today == null) {
             item {
                 BrText(
-                    "No plans yet. Create one in BeyondRep on your phone.",
+                    "No workouts yet. Add a program in BeyondRep on your phone.",
                     color = Palette.secondary, size = 13, modifier = Modifier.fillMaxWidth(0.85f),
                 )
             }

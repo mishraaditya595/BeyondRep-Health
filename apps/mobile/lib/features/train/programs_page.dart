@@ -14,6 +14,7 @@ import '../catalog/domain/catalog_filter.dart';
 import '../catalog/domain/catalog_models.dart';
 import '../catalog/domain/exercise_choices.dart';
 import '../programs/application/program_providers.dart';
+import '../programs/domain/program_models.dart';
 import 'catalog_filter_sheet.dart';
 import 'exercise_picker_sheet.dart';
 import 'program_detail_page.dart';
@@ -81,6 +82,15 @@ class _ProgramsPageState extends ConsumerState<ProgramsPage> {
         if (matchesProgram(p, filter)) p,
     ];
     final headers = <Widget>[
+      FilledButton.icon(
+        onPressed: () => context.push('/train/programs/new'),
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(double.infinity, 46),
+        ),
+        icon: const Icon(Icons.add),
+        label: const Text('Create program'),
+      ),
+      const SizedBox(height: 16),
       if (mine.isNotEmpty) ...[
         const SectionHeading('Your programs'),
         for (final p in mine)
@@ -90,14 +100,17 @@ class _ProgramsPageState extends ConsumerState<ProgramsPage> {
               onTap: () => context.push('/train/program/${p.uuid}'),
               icon: Icons.event_repeat_outlined,
               title: p.name,
-              subtitle: p.isActive ? 'Active' : 'Not active',
+              subtitle: p.sourceId == customProgramSourceId
+                  ? (p.isActive ? 'Active · your own' : 'Your own')
+                  : (p.isActive ? 'Active' : 'Not active'),
             ),
           ),
         const SizedBox(height: 8),
       ],
       const SectionHeading('Programs'),
       Text(
-        'A weekly schedule of workouts. Add one to get plans you can edit.',
+        'A weekly schedule of workouts. '
+        'Add a ready-made one or create your own.',
         style: TextStyle(color: muted),
       ),
       if (status == CatalogStatus.unavailable && all.isEmpty) ...[

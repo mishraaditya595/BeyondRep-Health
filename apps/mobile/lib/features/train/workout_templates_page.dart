@@ -88,7 +88,7 @@ class _WorkoutTemplatesPageState extends ConsumerState<WorkoutTemplatesPage> {
     final headers = <Widget>[
       const SectionHeading('Ready-made workouts'),
       Text(
-        'Start one now, or copy it into My Plans to make it your own.',
+        'Start one now, or add it to your own program.',
         style: TextStyle(color: muted),
       ),
       if (status == CatalogStatus.unavailable && all.isEmpty) ...[

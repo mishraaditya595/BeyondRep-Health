@@ -12,6 +12,8 @@ import 'package:beyondrep/features/health/data/watch_workout_lookup.dart';
 import 'package:beyondrep/features/progress/domain/workout_history_models.dart';
 import 'package:beyondrep/features/progress/workout_history_state.dart';
 import 'package:beyondrep/features/programs/application/program_providers.dart';
+import 'package:beyondrep/features/programs/domain/program_models.dart';
+import 'package:beyondrep/features/programs/domain/program_status.dart';
 import 'package:beyondrep/features/train/train_library_state.dart';
 import 'package:beyondrep/features/watch/application/watch_sync_controller.dart';
 import 'package:beyondrep/features/watch/application/watch_workout_health_inbox.dart';
@@ -141,6 +143,35 @@ final _library = WorkoutLibrarySnapshot(
   ],
 );
 
+final _programWeek = () {
+  final day = ProgramDayRecord(uuid: 'day-1', dayIndex: 3, planUuid: 'plan-1');
+  return ProgramWeek(
+    program: TrainingProgramRecord(
+      uuid: 'program-1',
+      name: 'Synthetic program',
+      description: '',
+      sourceId: 'custom',
+      sourceRelease: 0,
+      firstDayWeekday: 1,
+      isActive: true,
+      updatedAtMs: 0,
+      days: [day],
+    ),
+    localToday: DateTime(2026, 11, 24, 8),
+    rows: [
+      (
+        date: DateTime(2026, 11, 27),
+        dayIndex: 3,
+        day: day,
+        status: ProgramDayStatus.upcoming,
+      ),
+    ],
+    plans: {for (final p in _library.plans) p.uuid: p},
+    latestMissed: null,
+    nextTraining: null,
+  );
+}();
+
 class _Harness {
   _Harness(
     WidgetTester tester, {
@@ -164,7 +195,7 @@ class _Harness {
         wallClockProvider.overrideWithValue(() => DateTime(2026, 11, 24, 8)),
         localNowProvider.overrideWithValue(DateTime(2026, 11, 24, 8)),
         trainLibraryProvider.overrideWith((ref) async => _library),
-        programWeekProvider.overrideWithValue(null),
+        programWeekProvider.overrideWithValue(_programWeek),
         completedWorkoutHistoryProvider.overrideWith(
           (ref) async => const WorkoutHistorySnapshot(sessions: []),
         ),
@@ -578,7 +609,7 @@ void main() {
       await _elapse(tester, const Duration(seconds: 3));
       expect(h.container.read(watchStatusProvider), isA<WatchWaiting>());
       final state = h.container.read(watchLinkStateProvider);
-      expect(state.sentSummary, 'Health, 1 plan');
+      expect(state.sentSummary, 'Health, 1 workout');
       expect(state.device.installed, isTrue);
 
       h.link.incoming.add(_ack(_idOf(h.link.contexts.last, 'health_snapshot')));

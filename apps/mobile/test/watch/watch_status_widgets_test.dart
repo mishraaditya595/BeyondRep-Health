@@ -277,7 +277,7 @@ void main() {
     iosWidgets('synced', (tester) async {
       await _pump(
         tester,
-        _state(WatchSynced(_todayAt), summary: 'Readiness, health, 3 plans'),
+        _state(WatchSynced(_todayAt), summary: 'Readiness, health, 3 workouts'),
         section: true,
       );
       expect(find.text('APPLE WATCH'), findsOneWidget);
@@ -288,7 +288,7 @@ void main() {
       expect(find.text('Connected'), findsOneWidget);
       expect(find.text('Installed'), findsOneWidget);
       expect(find.text('Today 10:43 AM'), findsOneWidget);
-      expect(find.text('Readiness, health, 3 plans'), findsOneWidget);
+      expect(find.text('Readiness, health, 3 workouts'), findsOneWidget);
     });
 
     iosWidgets('not installed', (tester) async {

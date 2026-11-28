@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -14,7 +12,9 @@ import 'package:beyondrep/features/account/account_auth_provider.dart';
 import 'package:beyondrep/features/health/application/health_overview.dart';
 import 'package:beyondrep/features/health/application/health_summary_controller.dart';
 import 'package:beyondrep/features/health/data/health_reader.dart';
-import 'package:beyondrep/features/health/domain/readiness.dart';
+import 'package:beyondrep/features/programs/data/objectbox_program_repository.dart';
+import 'package:beyondrep/features/programs/domain/program_models.dart';
+import 'package:beyondrep/features/programs/domain/program_repository.dart';
 import 'package:beyondrep/features/progress/domain/workout_history_models.dart';
 import 'package:beyondrep/features/progress/workout_history_state.dart';
 import 'package:beyondrep/features/today/today_page.dart';
@@ -30,7 +30,6 @@ import 'package:beyondrep/features/workouts/domain/workout_models.dart';
 import '../support/fake_account_auth.dart';
 import '../support/fake_health_overview.dart';
 import '../support/fake_health_summary.dart';
-import '../support/health_overview_fixtures.dart';
 
 // Tuesday 24 Nov 2026, 23:02 local.
 final _now = DateTime(2026, 11, 24, 23, 2);
@@ -64,8 +63,30 @@ WorkoutSessionRecord _done(String id, DateTime atUtc, {String? plan}) =>
       planUuid: plan,
     );
 
+/// A program store with no programs; [fail] makes it unreadable.
+class _Programs implements ProgramRepository {
+  _Programs({this.fail = false});
+  final bool fail;
+
+  @override
+  List<TrainingProgramRecord> listPrograms() {
+    if (fail) throw StateError('store unavailable');
+    return const [];
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 class _FakeActions implements WorkoutActions {
   final started = <String>[];
+  final quick = <String>[];
+
+  @override
+  WorkoutSessionRecord startQuick(String name) {
+    quick.add(name);
+    return _done('quick', DateTime.utc(2026, 11, 24));
+  }
 
   @override
   WorkoutSessionRecord startPlan(String planUuid) {
@@ -94,6 +115,7 @@ void main() {
     Future<List<WorkoutSessionRecord>>? sessions,
     AsyncValue<ActiveWorkoutView?> unfinished = const AsyncData(null),
     bool settle = true,
+    bool programsFail = false,
     HealthOverview? health,
     List<Override> overrides = const [],
   }) async {
@@ -113,7 +135,7 @@ void main() {
         for (final path in [
           '/train',
           '/train/workout',
-          '/train/plans/new',
+          '/train/programs',
           '/train/plans/:id/edit',
         ])
           GoRoute(
@@ -140,6 +162,9 @@ void main() {
           localNowProvider.overrideWithValue(_now),
           activeWorkoutProvider.overrideWithValue(unfinished),
           workoutActionsProvider.overrideWithValue(actions),
+          programRepositoryProvider.overrideWithValue(
+            _Programs(fail: programsFail),
+          ),
           trainLibraryProvider.overrideWith(
             (ref) async => WorkoutLibrarySnapshot(
               exercises: const [],
@@ -216,7 +241,7 @@ void main() {
     expect(banner, findsOneWidget);
     expect(
       tester.getTopLeft(banner).dy,
-      lessThan(tester.getTopLeft(find.text('No plans yet')).dy),
+      lessThan(tester.getTopLeft(find.text('No program yet')).dy),
     );
   });
 
@@ -299,74 +324,65 @@ void main() {
     expect(find.textContaining('23 OCT'), findsNothing);
   });
 
-  testWidgets('without plans the hero offers to create one', (tester) async {
+  testWidgets('without a program the hero offers to pick one', (tester) async {
     await show(tester);
-    expect(find.text('Full Body A'), findsNothing);
-    expect(find.text('No plans yet'), findsOneWidget);
-    expect(find.textContaining('Around 45 min'), findsNothing);
-    await tester.tap(find.text('Create a plan'));
+    expect(find.text('GET STARTED'), findsOneWidget);
+    expect(find.text('No program yet'), findsOneWidget);
+    expect(
+      find.text(
+        'Pick a program to get a workout each day, or start a quick '
+        'workout and add exercises as you go.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Pick a program'));
     await tester.pumpAndSettle();
-    expect(pushed, ['/train/plans/new']);
+    expect(pushed, ['/train/programs']);
   });
 
-  testWidgets('without plans the hero can go to Train', (tester) async {
+  testWidgets('without a program the hero starts a quick workout', (
+    tester,
+  ) async {
     await show(tester);
-    expect(find.text('Quick workout'), findsNothing);
-    await tester.tap(find.text('Go to Train'));
+    expect(find.text('Go to Train'), findsNothing);
+    await tester.tap(find.text('Quick workout'));
     await tester.pumpAndSettle();
-    expect(pushed, ['/train']);
-    expect(find.text('Train route'), findsOneWidget);
-  });
-
-  testWidgets('Start workout starts the suggested plan', (tester) async {
-    await show(tester, plans: Future.value([_plan('a', 'Push day', 2)]));
+    // The same name prompt Train uses.
+    expect(find.text('Start an empty workout'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'Synthetic quick');
     await tester.tap(find.text('Start workout'));
     await tester.pumpAndSettle();
-    expect(actions.started, ['a']);
+    expect(actions.quick, ['Synthetic quick']);
     expect(pushed, ['/train/workout']);
   });
 
-  testWidgets('a Low readiness day asks before starting; Not now starts '
-      'nothing', (tester) async {
+  testWidgets('a program list that cannot load is not "No program yet"', (
+    tester,
+  ) async {
+    await show(tester, programsFail: true);
+    expect(find.text('Could not load your program'), findsOneWidget);
+    expect(find.text('Your local workouts were not changed.'), findsOneWidget);
+    expect(find.text('No program yet'), findsNothing);
+    expect(find.text('Pick a program'), findsNothing);
+    expect(find.text('Retry'), findsOneWidget);
+  });
+
+  testWidgets('saved workouts outside a program never appear on Today', (
+    tester,
+  ) async {
     await show(
       tester,
-      plans: Future.value([_plan('a', 'Push day', 2)]),
-      health: overview(
-        readiness: SectionData(
-          ReadinessOverview(
-            result: ReadinessReady(
-              Readiness(
-                value: 48,
-                band: readinessBandOf(48),
-                parts: const [
-                  ReadinessPart(
-                    input: ReadinessInput.sleep,
-                    score: 48,
-                    weight: 1,
-                  ),
-                ],
-              ),
-            ),
-            hasHrv: false,
-            hasRestingHr: false,
-            hasSleep: true,
-            hrvVsNormal: null,
-            restingHrVsNormal: null,
-            hrvBaseline: null,
-            restingHrBaseline: null,
-            hrvIsSdnn: true,
-          ),
-        ),
-      ),
+      plans: Future.value([_plan('a', 'Push day', 2), _plan('b', 'Legs', 5)]),
+      sessions: Future.value([
+        _done('1', DateTime.utc(2026, 11, 20, 9), plan: 'b'),
+      ]),
     );
-    await tester.tap(find.text('Start workout'));
-    await tester.pumpAndSettle();
-    expect(find.text('Energy is low right now'), findsWidgets);
-    expect(find.text('Not now'), findsOneWidget);
-    await tester.tap(find.text('Not now'));
-    await tester.pumpAndSettle();
-    expect(actions.started, isEmpty);
-    expect(pushed, isEmpty);
+    expect(find.text('No program yet'), findsOneWidget);
+    expect(find.text('Push day'), findsNothing);
+    expect(find.text('Legs'), findsNothing);
+    expect(find.text('NEXT UP'), findsNothing);
+    expect(find.text('Start workout'), findsNothing);
+    expect(find.text('Edit'), findsNothing);
   });
 
   testWidgets('an unfinished workout is offered for resume first', (
@@ -415,50 +431,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(actions.started, isEmpty);
     expect(pushed, ['/train']);
-  });
-
-  testWidgets('a failed load offers retry', (tester) async {
-    await show(
-      tester,
-      plans: Future.delayed(Duration.zero, () => throw StateError('disk')),
-    );
-    expect(find.text('Could not load your plans'), findsOneWidget);
-    expect(find.text('Retry'), findsOneWidget);
-  });
-
-  testWidgets('hero suggests the next saved plan with real facts', (
-    tester,
-  ) async {
-    await show(
-      tester,
-      plans: Future.value([_plan('a', 'Push day', 4), _plan('b', 'Legs', 5)]),
-      sessions: Future.value([
-        _done('1', DateTime.utc(2026, 11, 20, 9), plan: 'b'),
-        _done('2', DateTime.utc(2026, 11, 23, 9), plan: 'a'),
-      ]),
-    );
-    expect(find.text('NEXT UP'), findsOneWidget);
-    expect(find.text('Legs'), findsOneWidget);
-    expect(find.text('5 exercises · Last done 20/11/2026'), findsOneWidget);
-    expect(find.text('Move'), findsNothing);
-    await tester.tap(find.text('Edit'));
-    await tester.pumpAndSettle();
-    expect(pushed, ['/train/plans/b/edit']);
-  });
-
-  testWidgets('a plan never finished says so', (tester) async {
-    await show(tester, plans: Future.value([_plan('a', 'Push day', 1)]));
-    expect(find.text('1 exercise · Not done yet'), findsOneWidget);
-  });
-
-  testWidgets('hero waits for plans instead of guessing', (tester) async {
-    final plans = Completer<List<WorkoutPlanRecord>>();
-    await show(tester, plans: plans.future, settle: false);
-    expect(find.text('No plans yet'), findsNothing);
-    expect(find.bySemanticsLabel(RegExp('Loading your plans')), findsOneWidget);
-    plans.complete(const []);
-    await tester.pumpAndSettle();
-    expect(find.text('No plans yet'), findsOneWidget);
   });
 
   testWidgets('no demo energy check-in is shown', (tester) async {

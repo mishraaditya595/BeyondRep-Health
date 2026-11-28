@@ -65,7 +65,7 @@ private struct TrainContent: View {
                 .buttonStyle(.plain)
             }
             if glance.plans.isEmpty && glance.today == nil {
-                Text("No plans yet. Create one in BeyondRep on your iPhone.")
+                Text("No workouts yet. Add a program in BeyondRep on your iPhone.")
                     .font(.footnote)
                     .foregroundStyle(Palette.secondary)
                     .fixedSize(horizontal: false, vertical: true)

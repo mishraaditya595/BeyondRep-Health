@@ -6,10 +6,8 @@ import 'package:beyondrep/features/health/domain/energy.dart';
 import 'package:beyondrep/features/health/domain/readiness.dart';
 import 'package:beyondrep/features/health/widgets/readiness_note.dart';
 import 'package:beyondrep/features/train/active_workout_state.dart';
-import 'package:beyondrep/features/train/train_library_state.dart';
 import 'package:beyondrep/features/train/train_page.dart';
 import 'package:beyondrep/features/workouts/domain/live_workout_engine.dart';
-import 'package:beyondrep/features/workouts/domain/workout_library_models.dart';
 import 'package:beyondrep/features/workouts/domain/workout_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,8 +21,8 @@ class _Actions implements WorkoutActions {
   final started = <String>[];
 
   @override
-  startPlan(String planUuid) {
-    started.add(planUuid);
+  startQuick(String name) {
+    started.add(name);
     throw StateError('synthetic: stop before navigation');
   }
 
@@ -84,14 +82,6 @@ const _notReady = SectionData(
 final _nowProvider = _value(DateTime(2026, 11, 24, 9));
 final _ownerProvider = _value<String?>('synthetic-owner');
 
-const _plan = WorkoutPlanRecord(
-  uuid: 'plan-1',
-  name: 'Push day',
-  description: '',
-  updatedAtMs: 0,
-  exercises: [],
-);
-
 late _Actions _actions;
 late ProviderContainer _container;
 late FakeHealthOverviewController _controller;
@@ -122,10 +112,6 @@ Future<void> _pump(
       healthOwnerIdProvider.overrideWith((ref) => ref.watch(_ownerProvider)),
       localNowProvider.overrideWith((ref) => ref.watch(_nowProvider)),
       workoutActionsProvider.overrideWithValue(_actions),
-      trainLibraryProvider.overrideWith(
-        (ref) async =>
-            const WorkoutLibrarySnapshot(exercises: [], plans: [_plan]),
-      ),
       activeWorkoutProvider.overrideWith((ref) => active),
     ],
   );
@@ -143,7 +129,9 @@ Future<void> _pump(
 }
 
 Future<void> _tapStart(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('Start Push day'));
+  await tester.tap(find.text('Quick workout'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Start workout'));
   await tester.pumpAndSettle();
 }
 
@@ -191,14 +179,17 @@ void main() {
     await _pump(tester, _low());
     await _tapStart(tester);
     expect(find.text('Energy is low right now'), findsOneWidget);
-    expect(find.textContaining('Your plans are not changed'), findsNWidgets(2));
+    expect(
+      find.textContaining('Your workouts are not changed'),
+      findsNWidgets(2),
+    );
     expect(_actions.started, isEmpty);
     await tester.tap(find.text('Start workout'));
     await tester.pumpAndSettle();
-    expect(_actions.started, ['plan-1']);
+    expect(_actions.started, ['Quick workout']);
 
     await _tapStart(tester);
-    expect(_actions.started, ['plan-1', 'plan-1']);
+    expect(_actions.started, ['Quick workout', 'Quick workout']);
     expect(find.text('Not now'), findsNothing);
   });
 
@@ -217,7 +208,7 @@ void main() {
     await _pump(tester, _lowStartNoEnergy());
     await _tapStart(tester);
     expect(find.text('Not now'), findsNothing);
-    expect(_actions.started, ['plan-1']);
+    expect(_actions.started, ['Quick workout']);
   });
 
   testWidgets('an unfinished workout blocks the start before the note', (
@@ -261,7 +252,7 @@ void main() {
 
     await _tapStart(tester);
     expect(find.text('Not now'), findsNothing);
-    expect(_actions.started, ['plan-1']);
+    expect(_actions.started, ['Quick workout']);
   });
 
   testWidgets('dismissing the note counts as Not now', (tester) async {
@@ -282,7 +273,7 @@ void main() {
     );
     await _tapStart(tester);
     expect(find.text('Not now'), findsNothing);
-    expect(_actions.started, ['plan-1']);
+    expect(_actions.started, ['Quick workout']);
     expect(_container.read(readinessStartNoteShownProvider), isNull);
   });
 
@@ -316,7 +307,7 @@ void main() {
     await tester.pump();
     await _tapStart(tester);
     expect(find.text('Not now'), findsNothing);
-    expect(_actions.started, ['plan-1']);
+    expect(_actions.started, ['Quick workout']);
 
     // The next waking day shows it again.
     _container.read(_nowProvider.notifier).set(DateTime(2026, 11, 25, 7, 30));
@@ -354,7 +345,7 @@ void main() {
     await tester.pump();
     await _tapStart(tester);
     expect(find.text('Not now'), findsNothing);
-    expect(_actions.started, ['plan-1']);
+    expect(_actions.started, ['Quick workout']);
   });
 
   for (final (name, health) in <(String, HealthOverview?)>[
@@ -368,7 +359,7 @@ void main() {
       await _pump(tester, health);
       await _tapStart(tester);
       expect(find.text('Not now'), findsNothing);
-      expect(_actions.started, ['plan-1']);
+      expect(_actions.started, ['Quick workout']);
     });
   }
 
@@ -381,7 +372,7 @@ void main() {
     await tester.pumpAndSettle();
     // _Actions throws on every call except startPlan, so any other write
     // (including health or readiness persistence) would surface here.
-    expect(_actions.started, ['plan-1']);
+    expect(_actions.started, ['Quick workout']);
     expect(tester.takeException(), isNull);
   });
 }

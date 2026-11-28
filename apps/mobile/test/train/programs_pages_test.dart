@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:beyondrep/features/workouts/domain/workout_library_models.dart';
 import 'package:beyondrep/features/catalog/domain/catalog_templates.dart';
 import 'package:beyondrep/features/programs/data/objectbox_program_repository.dart';
+import 'package:beyondrep/features/workouts/data/objectbox_workout_library_repository.dart';
 import 'package:beyondrep/features/workouts/data/workout_entities.dart';
 import 'package:beyondrep/objectbox.g.dart';
 import 'package:flutter/material.dart';
@@ -242,6 +243,75 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Your program'), findsOneWidget);
       expect(uuid, isNotEmpty);
+    });
+
+    testWidgets('Create program opens the builder and the intro says so', (
+      tester,
+    ) async {
+      await open(tester, '/train/programs');
+      expect(
+        find.text(
+          'A weekly schedule of workouts. '
+          'Add a ready-made one or create your own.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Create program'));
+      await tester.pumpAndSettle();
+      expect(find.text('CREATE'), findsOneWidget);
+    });
+
+    testWidgets('your own programs say so in the list', (tester) async {
+      seed('prog.three');
+      final snapshot = programsSnapshot();
+      final template = snapshot.templates.firstWhere((t) => t.id == 'tpl.push');
+      ObjectBoxProgramRepository(store).createProgram(
+        requestUuid: 'custom-1',
+        name: 'My own',
+        description: '',
+        workouts: [
+          TemplateWorkoutSource(
+            name: 'Mine',
+            description: '',
+            rows: templateRowInputs(template, snapshot),
+            release: 4,
+          ),
+        ],
+        week: const [0, null, null, null, null, null, null],
+        firstDayWeekday: 1,
+        makeActive: false,
+        localToday: DateTime(2026, 11, 25),
+      );
+      await open(tester, '/train/programs');
+      expect(find.text('Your own'), findsOneWidget);
+      expect(find.text('Active'), findsOneWidget);
+      expect(find.text('Not active'), findsNothing);
+    });
+
+    testWidgets('an active own program reads Active · your own', (
+      tester,
+    ) async {
+      final snapshot = programsSnapshot();
+      final template = snapshot.templates.firstWhere((t) => t.id == 'tpl.push');
+      ObjectBoxProgramRepository(store).createProgram(
+        requestUuid: 'custom-1',
+        name: 'My own',
+        description: '',
+        workouts: [
+          TemplateWorkoutSource(
+            name: 'Mine',
+            description: '',
+            rows: templateRowInputs(template, snapshot),
+            release: 4,
+          ),
+        ],
+        week: const [0, null, null, null, null, null, null],
+        firstDayWeekday: 1,
+        makeActive: true,
+        localToday: DateTime(2026, 11, 25),
+      );
+      await open(tester, '/train/programs');
+      expect(find.text('Active · your own'), findsOneWidget);
     });
 
     testWidgets('an unavailable catalogue says so', (tester) async {
@@ -657,9 +727,8 @@ void main() {
       await tester.tap(find.text('Wednesday · Synthetic push'));
       await tester.pumpAndSettle();
       expect(find.text('Edit workout'), findsOneWidget);
-      await tester.tap(find.text('Synthetic push').last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Rest').last);
+      expect(find.text('Change to…'), findsNothing);
+      await tester.tap(find.text('Rest day'));
       await tester.pumpAndSettle();
       final days = store.box<ProgramDayEntity>().getAll()
         ..sort((a, b) => a.dayIndex.compareTo(b.dayIndex));
@@ -675,14 +744,12 @@ void main() {
       await tester.tap(find.text('Thursday · Rest'));
       await tester.pumpAndSettle();
       expect(find.text('Edit workout'), findsNothing);
-      await tester.tap(find.text('Rest').last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Synthetic pull').last);
+      await tester.tap(find.text('Synthetic pull'));
       await tester.pumpAndSettle();
       expect(find.text('Thursday · Synthetic pull'), findsOneWidget);
     });
 
-    testWidgets('a single-use day set to Rest can be pointed back', (
+    testWidgets('a workout set to Rest on its only day is no longer offered', (
       tester,
     ) async {
       final uuid = seed('prog.three');
@@ -690,19 +757,146 @@ void main() {
       // Friday (day 2) is the only day using Synthetic pull.
       await tester.tap(find.text('Friday · Synthetic pull'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Synthetic pull').last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Rest').last);
+      await tester.tap(find.text('Rest day'));
       await tester.pumpAndSettle();
       expect(find.text('Friday · Rest'), findsOneWidget);
       await tester.tap(find.text('Friday · Rest'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Rest').last);
-      await tester.pumpAndSettle();
-      expect(find.text('Synthetic pull'), findsOneWidget);
-      await tester.tap(find.text('Synthetic pull'));
-      await tester.pumpAndSettle();
-      expect(find.text('Friday · Synthetic pull'), findsOneWidget);
+      expect(find.text('Rest day'), findsOneWidget);
+      expect(find.text('Synthetic pull'), findsNothing);
+    });
+
+    group('adding workouts and renaming', () {
+      testWidgets('Edit name renames and redescribes', (tester) async {
+        final uuid = seed('prog.three');
+        await open(tester, '/train/program/$uuid', now: wednesday);
+        await tester.tap(find.byTooltip('Edit name'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).first, '  Renamed  ');
+        await tester.enterText(find.byType(TextField).last, 'About it.');
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+        expect(onlyProgram().name, 'Renamed');
+        expect(onlyProgram().description, 'About it.');
+        expect(find.text('Renamed'), findsOneWidget);
+      });
+
+      testWidgets('Edit name refuses an empty name', (tester) async {
+        final uuid = seed('prog.three');
+        await open(tester, '/train/program/$uuid', now: wednesday);
+        await tester.tap(find.byTooltip('Edit name'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).first, ' ');
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+        expect(find.text('Give the program a name.'), findsOneWidget);
+        expect(onlyProgram().name, 'Synthetic three-day');
+      });
+
+      testWidgets('New workout opens the editor and the day uses the result', (
+        tester,
+      ) async {
+        final uuid = seed('prog.three');
+        final visited = await open(
+          tester,
+          '/train/program/$uuid',
+          now: wednesday,
+        );
+        await tester.tap(find.text('Thursday · Rest'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('New workout'));
+        await tester.pumpAndSettle();
+        expect(visited.single, 'new-workout $uuid day=1');
+        await tester.tap(find.text('Add stub workout'));
+        await tester.pumpAndSettle();
+        expect(find.text('Thursday · Stub workout'), findsOneWidget);
+        final record = ObjectBoxProgramRepository(store).getProgram(uuid)!;
+        final plan = ObjectBoxProgramRepository(store)
+            .programPlans(uuid)
+            .firstWhere((p) => p.name == 'Stub workout');
+        expect(record.days[1].planUuid, plan.uuid);
+      });
+
+      testWidgets('Copy a ready-made workout adds it and sets the day', (
+        tester,
+      ) async {
+        final uuid = seed('prog.three');
+        await open(tester, '/train/program/$uuid', now: wednesday);
+        final before = store.box<WorkoutPlanEntity>().count();
+        await tester.tap(find.text('Thursday · Rest'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Copy a ready-made workout'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Synthetic seven'));
+        await tester.pumpAndSettle();
+        expect(find.text('Thursday · Synthetic seven'), findsOneWidget);
+        expect(store.box<WorkoutPlanEntity>().count(), before + 1);
+        final repo = ObjectBoxProgramRepository(store);
+        expect(
+          repo.programPlans(uuid).map((p) => p.name),
+          contains('Synthetic seven'),
+        );
+      });
+
+      testWidgets('Copy one of my saved workouts adds a copy', (tester) async {
+        final uuid = seed('prog.three');
+        ObjectBoxWorkoutLibraryRepository(store).savePlan(
+          uuid: 'old-1',
+          name: 'Old routine',
+          description: '',
+          exercises: const [],
+        );
+        await open(tester, '/train/program/$uuid', now: wednesday);
+        await tester.tap(find.text('Thursday · Rest'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Copy one of my saved workouts'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Old routine'));
+        await tester.pumpAndSettle();
+        expect(find.text('Thursday · Old routine'), findsOneWidget);
+        final copy = ObjectBoxProgramRepository(store)
+            .programPlans(uuid)
+            .firstWhere((p) => p.name == 'Old routine');
+        expect(copy.uuid, isNot('old-1'));
+        expect(
+          ObjectBoxWorkoutLibraryRepository(store)
+              .getPlan('old-1')!
+              .programUuid,
+          isNull,
+        );
+      });
+
+      testWidgets('at 30 workouts the add options are disabled', (
+        tester,
+      ) async {
+        final uuid = seed('prog.three');
+        final repo = ObjectBoxProgramRepository(store);
+        // The repository never lets unused workouts pile up, so the limit
+        // is reached by writing rows directly.
+        var n = 0;
+        while (repo.programPlans(uuid).length < maxProgramWorkouts) {
+          store.box<WorkoutPlanEntity>().put(
+            WorkoutPlanEntity(
+              uuid: 'filler-${n++}',
+              name: 'Filler',
+              description: '',
+              createdAtMs: 0,
+              updatedAtMs: 0,
+              programUuid: uuid,
+            ),
+          );
+        }
+        await open(tester, '/train/program/$uuid', now: wednesday);
+        await tester.tap(find.text('Thursday · Rest'));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('A program can hold up to 30 workouts.'),
+          findsNWidgets(2),
+        );
+        await tester.tap(find.text('New workout'));
+        await tester.pumpAndSettle();
+        expect(repo.programPlans(uuid), hasLength(30));
+      });
     });
 
     testWidgets('Edit workout opens that plan in the editor', (tester) async {
@@ -803,14 +997,11 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(find.text('Programs'), findsOneWidget);
-      expect(
-        find.text('Multi-week plans with a weekly schedule'),
-        findsOneWidget,
-      );
+      expect(find.text('Ready-made and your own'), findsOneWidget);
       expect(find.text('Your program'), findsNothing);
     });
 
-    testWidgets('the active program shows today; its plans are not listed', (
+    testWidgets('the active program shows today; its workouts are not listed', (
       tester,
     ) async {
       seed('prog.three');
@@ -819,7 +1010,7 @@ void main() {
       expect(find.text('Synthetic three-day'), findsOneWidget);
       expect(find.text('Today: Synthetic push'), findsOneWidget);
       expect(find.text('Synthetic pull'), findsNothing);
-      expect(find.text('No plans yet', skipOffstage: false), findsOneWidget);
+      expect(find.text('Your plans', skipOffstage: false), findsNothing);
     });
 
     testWidgets('a rest day reads Today: Rest day', (tester) async {

@@ -41,7 +41,7 @@ struct PlanPreviewView: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                     }
                 } else {
-                    Text("This plan is not on your watch yet.")
+                    Text("This workout is not on your watch yet.")
                         .font(.footnote)
                         .foregroundStyle(Palette.secondary)
                 }

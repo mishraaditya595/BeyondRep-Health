@@ -19,7 +19,7 @@ class NsHeroFrame extends StatelessWidget {
     this.actions = const [],
     this.leading,
     this.child,
-    this.loadingLabel = 'Loading your plans',
+    this.loadingLabel = 'Loading your program',
   });
 
   final String eyebrow;

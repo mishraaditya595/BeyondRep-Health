@@ -258,7 +258,7 @@ class WatchScreensTest {
     fun withoutPlansTrainSaysSo() {
         bind(); saveFullHealth()
         showRoot(initialPage = 1)
-        waitForText("No plans yet. Create one in BeyondRep on your phone.")
+        waitForText("No workouts yet. Add a program in BeyondRep on your phone.")
     }
 
     // --- Layout on small and large round screens ------------------------------------------

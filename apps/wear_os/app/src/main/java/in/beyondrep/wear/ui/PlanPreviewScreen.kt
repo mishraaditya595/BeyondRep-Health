@@ -23,7 +23,7 @@ fun PlanPreviewScreen(template: WorkoutTemplate?, onStart: (() -> Unit)? = null)
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (template == null) {
-            item { BrText("This plan is not on your watch yet.", color = Palette.secondary, size = 13, align = TextAlign.Center) }
+            item { BrText("This workout is not on your watch yet.", color = Palette.secondary, size = 13, align = TextAlign.Center) }
             return@ScalingLazyColumn
         }
         item { BrText(template.name, size = 13, weight = FontWeight.SemiBold, align = TextAlign.Center) }

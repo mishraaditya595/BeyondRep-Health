@@ -93,7 +93,7 @@ The Today readiness hero and tiles, explain sheets, Health terms page and the Tr
 | Check | iOS | Android |
 | --- | --- | --- |
 | Today health row (hero or slim card, 2x2 tiles) in light, dark, 2x text and tablet split screen | not run | not run |
-| Train start card with and without a program workout today; readiness strip opens the readiness detail; Low shows "Your plans are not changed" | not run | not run |
+| Train start card with and without a program workout today; readiness strip opens the readiness detail; Low shows "Your workouts are not changed" | not run | not run |
 | Every explain (i) sheet and Health terms entry opens, reads correctly and closes with the screen reader on | not run | not run |
 | Core vs Light sleep stage naming on Android | not run | not run |
 
@@ -144,7 +144,7 @@ The iPhone app sends the signed-in account's plans and today's numbers to the Be
 | --- | --- |
 | TestFlight build installs the BeyondRep watch app from the iPhone Watch app | not run |
 | Signed in, the watch shows the same readiness, sleep, resting HR, HRV and steps as the phone's Today and Health tabs, with the same "as of" time | not run |
-| The watch plan list matches the phone's plans, with today's program workout named when there is one | not run |
+| The watch workout list matches the active program's workouts, with today's named when there is one | not run |
 | Phone in airplane mode: the last glance stays, with its "as of" time | not run |
 | After local midnight the watch shows "Open BeyondRep on your iPhone to refresh", no readiness and dashes, not yesterday's values | not run |
 | Sign out on the phone: the watch shows "Open BeyondRep on your iPhone to sign in." | not run |
@@ -178,7 +178,7 @@ The two-page watch app, its detail screens and the watch status on the iPhone ar
 | --- | --- |
 | TestFlight build installs on the watch; Home shows the readiness hero and an even 2x2 grid with a status line on each tile | not run |
 | The Train button in the bottom corner of Home opens the Train page; the crown also scrolls between Home and Train; the "Turn the crown for your workouts" hint shows once and "Got it" dismisses it for good | not run |
-| Train shows today's program workout first, then the plans, with no Start button | not run |
+| Train shows today's program workout first, then the program's other workouts, with no Start button | not run |
 | Every tile, the hero and the top status line open a detail screen; sleep shows stages, resting HR and HRV a dashed usual line, steps bars with today highlighted, readiness one line per input; a day without data has no mark, never 0 | not run |
 | The detail values match the phone's Health tab and the readiness words match the phone | not run |
 | Large text and VoiceOver on a 41 mm and a larger watch: tiles read "Resting heart rate 61 beats per minute, 2 below your usual", the grid falls back to one column, nothing clipped | not run |
@@ -270,7 +270,7 @@ Workout templates (release 3, 16 templates) are implemented in source, **not dep
 | Deploy order: the owner has read the template review sheet, merged, and the `supabase-database` job has applied `20261126040000_catalog_release_3.sql` | not run | not run |
 | Browse: Train, then Workouts lists the templates; search and the level chips narrow the list; a template opens with every exercise, its sets, reps or seconds, rest and note | not run | not run |
 | Start now on a template with a plank: the logger opens, the plank row logs seconds, rep exercises log reps and weight, and no plan is saved | not run | not run |
-| Copy to My Plans twice: the first makes the plan, the second makes "<name> (2)"; the plan opens from the Edit action and from Your plans, and editing it never changes the template | not run | not run |
+| Add a ready-made workout to a day of Your program twice (double tap, then again later): the double tap makes one workout; adding it later replaces that day's workout, and the replaced one disappears from the day sheet when no other day uses it; editing the added workout never changes the template | not run | not run |
 | Copy offline with the cached catalogue: the copy and a started workout work with no network | not run | not run |
 | Start now while a workout is already running: the message shows and nothing changes | not run | not run |
 | Text size 200 percent on a 7-exercise template in light and dark: nothing overflows and both buttons can be reached | not run | not run |
@@ -283,12 +283,12 @@ Programs (release 4, 17 programs) are implemented in source, **not deployed, rel
 | Check | iOS | Android |
 | --- | --- | --- |
 | Deploy order: the owner has read the program review sheet, merged, and the `supabase-database` job has applied `20261126050000_catalog_release_4.sql` | not run | not run |
-| Add a program: Train, Programs, open one, pick the weekday and add it; Your program opens, its workouts are not under Your plans | not run | not run |
+| Add a program: Train, Programs, open one, pick the weekday and add it; Your program opens with its workouts, and Train has no list of plans | not run | not run |
 | Switch the active program: add a second one as active; the first shows Not active and Train shows the second | not run | not run |
 | Edit the schedule: change a day to Rest, point a day at another workout, change the start day; the week updates and survives a restart | not run | not run |
 | Start today's workout from Your program: the logger opens, the finished workout syncs as a normal workout and nothing about the program reaches the cloud | not run | not run |
 | Edit a program workout in the plan editor: the changes stay, and there is no archive button | not run | not run |
-| Archive a program: its plans disappear and logged workouts stay in history | not run | not run |
+| Archive a program: its workouts disappear and logged workouts stay in history | not run | not run |
 | Upgrade an install that has plans and workouts from the previous build: everything is still there and Programs opens | not run | not run |
 | Text size 200 percent on a 6-day program and on Your program in light and dark: nothing overflows and the buttons can be reached | not run | not run |
 
@@ -329,7 +329,7 @@ Neither Account > Sync nor a debug log reports catalogue download time or size t
 | 2.3 | Open an exercise detail and a template detail; body maps match the lists (S3 exercise detail, S6 template screen) | not run | not run |
 | **3. Workouts** | | | |
 | 3.1 | Start now from a template; the workout logs and no plan is created (S6 start now) | not run | not run |
-| 3.2 | Copy to My Plans, double-tap the button: one plan, editable, independent of the catalogue (S6 copy to My Plans, S6 double tap) | not run | not run |
+| 3.2 | Add a ready-made workout to a program day, double-tap: one workout, editable, independent of the catalogue (replaces the former Copy to My Plans checks) | not run | not run |
 | **4. Programs** | | | |
 | 4.1 | Add a program on a Wednesday, set active, open Your program (S7 add program, set active) | not run | not run |
 | 4.2 | Today card on a training day, rest day and after finishing; Start, Open program (S8 Today rows) | not run | not run |
@@ -478,7 +478,7 @@ The Android phone sends account binding, plans and today's health to the BeyondR
 | Run `mobile-android-release` with `play_track` `internal`: both drafts appear (phone on internal, watch on the Wear OS internal track); Play accepts `wear:internal`; roll both out and add the watch's account as a tester | not run |
 | Install the phone app and the watch app from the internal tracks; both show the same version name and the watch versionCode is the phone's + 1 | not run |
 | Before sign-in the watch says "Open BeyondRep on your phone to sign in." | not run |
-| Sign in on the phone: within a minute the watch Home shows the sync line, energy ring and four tiles with "vs usual" lines, and Train lists today's program workout first, then plans | not run |
+| Sign in on the phone: within a minute the watch Home shows the sync line, energy ring and four tiles with "vs usual" lines, and Train lists today's program workout first, then the program's other workouts | not run |
 | Tap a plan on Train: a read-only preview with exercises and sets x reps, no Start button; tap tiles and the ring: the detail screens open and swipe back works | not run |
 | Rotary (bezel or crown) scrolls the lists; two dots at the right edge show Home or Train | not run |
 | Crown or rotary scrolling works on a real watch on the Home and Train pages, including a flick past the last tile and moving between the two pages: the app uses neither `ScreenScaffold` nor `TimeText` and pages with the foundation `VerticalPager`, so rotary input is not wired by a scaffold | not run |
@@ -580,3 +580,14 @@ Log a new weight to Apple Health / Health Connect. Implemented in source, **not 
 | VoiceOver and TalkBack read the sheet, the field error and the snackbar Undo | not run |
 | Android: `adb logcat` during a Save shows no weight value or record id from BeyondRep or the `health` plugin | not run |
 | Store disclosures: Play Health apps declaration lists `WRITE_WEIGHT`; App Privacy answers unchanged | not run |
+
+## Programs replace plans, stage 1 (device checks, none run)
+
+Owner actions on a physical iPhone, Android phone and, where available, both watches:
+
+- [ ] Create a program (name, three workouts of different kinds, day slots, active on). It opens on Your program with the right days.
+- [ ] Add, edit and swap the workout of a day on Your program; a workout replaced on its only day disappears from the day sheet's "In this program" list.
+- [ ] With a muscle group logged yesterday, "Better fit today" shows on Your program; the swap starts the lighter workout in today's slot and today's day is marked done.
+- [ ] Train and Today show no plan lists or "start a plan" wording; with no active program Today offers Pick a program and Quick workout (the name prompt appears), and a program store that cannot be read shows "Could not load your program" with Retry.
+- [ ] Apple Watch and Wear OS Train pages list the active program's workouts, today's first, with the new "No workouts yet" and "This workout is not on your watch yet" texts (watch string edits are unbuilt and unverified).
+- [ ] Light/dark, 200% text and a tablet width for the builder, the day sheet and Your program.

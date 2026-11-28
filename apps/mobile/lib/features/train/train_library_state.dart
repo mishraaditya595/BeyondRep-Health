@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/clock.dart';
 import '../health/application/health_overview.dart';
+import '../programs/application/program_providers.dart';
 import '../health/domain/readiness.dart';
 import '../progress/muscle_recovery.dart';
 import '../progress/workout_history_state.dart';
@@ -21,7 +22,8 @@ final trainLibraryProvider = FutureProvider<WorkoutLibrarySnapshot>((
   );
 });
 
-/// How recovered each plan's muscles are, and the plan that fits today best.
+/// How recovered each of the active program's workouts' muscles are, and the
+/// workout that fits today best.
 class PlanFit {
   const PlanFit({required this.byPlan, required this.suggestion});
 
@@ -31,7 +33,8 @@ class PlanFit {
 }
 
 /// Null while the library or completed history loads or fails, and when
-/// there are no completed workouts. Health loading, failing or unavailable
+/// there are no completed workouts. Nothing is suggested without an active
+/// program. Health loading, failing or unavailable
 /// only means readiness is not low.
 final planFitProvider = Provider.autoDispose<PlanFit?>((ref) {
   final library = ref.watch(trainLibraryProvider).value;
@@ -42,7 +45,10 @@ final planFitProvider = Provider.autoDispose<PlanFit?>((ref) {
   final recovery = ref.watch(muscleRecoveryProvider);
   final exercises = {for (final e in library.exercises) e.uuid: e};
   final byPlan = <String, PlanRecovery>{};
-  for (final plan in library.plans) {
+  // Only the active program's own workouts: saved workouts outside a program
+  // are never suggested.
+  final plans = ref.watch(programWeekProvider)?.plans.values ?? const [];
+  for (final plan in plans) {
     final planRecovery = planRecoveryOf(plan, exercises, recovery);
     if (planRecovery != null) byPlan[plan.uuid] = planRecovery;
   }

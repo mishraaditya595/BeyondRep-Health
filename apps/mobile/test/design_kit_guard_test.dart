@@ -20,6 +20,8 @@ void main() {
       'FilterChip(': 'NsChip',
       'SnackBar(': 'showNsMessage',
       'ScaffoldMessenger': 'showNsMessage',
+      'Switch(': 'NsSwitchRow',
+      'SwitchListTile(': 'NsSwitchRow',
     };
     final offences = <String>[];
     for (final file in Directory('lib/features').listSync(recursive: true)) {

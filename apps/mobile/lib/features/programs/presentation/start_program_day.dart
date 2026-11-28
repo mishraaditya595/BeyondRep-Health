@@ -11,18 +11,20 @@ import '../domain/program_models.dart';
 import '../domain/program_schedule.dart';
 
 const _startFailedMessage =
-    'Could not start this workout. Check the plan and any unfinished '
+    'Could not start this workout. Check the program and any unfinished '
     'workout.';
 
 /// Starts [program]'s workout for today, or for a missed day when
 /// [missedDate] and [missedPlanUuid] are given, and opens the logger. Reports
-/// problems through [onFailed]; the caller keeps any busy state.
+/// problems through [onFailed]; the caller keeps any busy state. With
+/// [swapPlanUuid] it starts that other workout of the program as today's.
 Future<void> startProgramDay(
   BuildContext context,
   WidgetRef ref,
   TrainingProgramRecord program, {
   DateTime? missedDate,
   String? missedPlanUuid,
+  String? swapPlanUuid,
   required void Function(String message) onFailed,
 }) async {
   void startFailed() {
@@ -48,6 +50,7 @@ Future<void> startProgramDay(
               ? dayFor(program, ref.read(localNowProvider)).planUuid
               : missedPlanUuid,
           missedDate: missedDate,
+          swapPlanUuid: swapPlanUuid,
         );
     ref.invalidate(activeWorkoutProvider);
     invalidatePrograms(ref);

@@ -124,6 +124,7 @@ class FakeProgramActions implements WorkoutActions {
     TrainingProgramRecord program, {
     required String? expectedPlanUuid,
     DateTime? missedDate,
+    String? swapPlanUuid,
   }) {
     if (failWith != null) throw failWith!;
     calls.add(ProgramStartCall(program, expectedPlanUuid, missedDate));
@@ -193,6 +194,7 @@ Future<FakeProgramActions> pumpTodayProgram(
         activeWorkoutProvider.overrideWithValue(const AsyncData(null)),
         workoutActionsProvider.overrideWithValue(actions),
         programWeekProvider.overrideWith((ref) => week),
+        programsLoadFailedProvider.overrideWithValue(false),
         trainLibraryProvider.overrideWith(
           (ref) async => const WorkoutLibrarySnapshot(exercises: [], plans: []),
         ),

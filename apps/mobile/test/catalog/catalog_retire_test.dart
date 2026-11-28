@@ -153,12 +153,11 @@ void main() {
       );
       final push = browsableTemplates(base)
           .firstWhere((t) => t.id == 'tpl.push');
-      ObjectBoxWorkoutLibraryRepository(store).copyCatalogTemplate(
-        requestUuid: 'c1',
+      ObjectBoxWorkoutLibraryRepository(store).savePlan(
+        uuid: 'c1',
         name: push.name,
         description: push.description,
-        rows: templateRowInputs(push, base),
-        release: 4,
+        exercises: const [],
       );
 
       // The next release retires all of it; nothing local reads the catalogue.

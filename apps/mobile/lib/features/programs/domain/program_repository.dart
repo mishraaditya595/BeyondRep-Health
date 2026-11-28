@@ -21,13 +21,51 @@ abstract interface class ProgramRepository {
     required DateTime localToday,
   });
 
+  /// Creates a custom program (sourceId 'custom', sourceRelease 0) in one
+  /// transaction: one program-owned workout per [workouts] entry, seven days
+  /// where week[i] is an index into [workouts] or null for rest. Repeating
+  /// [requestUuid] returns the existing program. Needs at least one training
+  /// day, every index valid and every workout used; otherwise
+  /// [ArgumentError]. More than [maxProgramWorkouts] workouts throws
+  /// [ProgramWorkoutLimit].
+  TrainingProgramRecord createProgram({
+    required String requestUuid,
+    required String name,
+    required String description,
+    required List<ProgramWorkoutSource> workouts,
+    required List<int?> week,
+    required int firstDayWeekday,
+    required bool makeActive,
+    required DateTime localToday,
+  });
+
+  /// Renames and redescribes a live program. Same name rules as create.
+  void updateDetails(
+    String programUuid, {
+    required String name,
+    required String description,
+  });
+
+  /// In one transaction creates a program-owned workout (its plan UUID is
+  /// [requestUuid]) and makes it the workout of [dayIndex], replacing the
+  /// day's previous workout, which is archived when no other day uses it.
+  /// Repeating a [requestUuid] returns the existing workout and changes
+  /// nothing. Throws [ProgramWorkoutLimit] at 30 live workouts.
+  String addWorkout(
+    String programUuid,
+    ProgramWorkoutSource source, {
+    required int dayIndex,
+    required String requestUuid,
+  });
+
   /// Activating deactivates every other program in the same transaction.
   void setActive(String programUuid, bool active, DateTime localToday);
 
   void setFirstWeekday(String programUuid, int weekday);
 
   /// A null [planUuid] makes the day a rest day. The plan must belong to the
-  /// program, otherwise [ArgumentError].
+  /// program, otherwise [ArgumentError]. A workout no day uses any more is
+  /// archived in the same transaction.
   void setDayPlan(String programUuid, int dayIndex, String? planUuid);
 
   /// The program's non-archived plans (the ones [setDayPlan] accepts), in

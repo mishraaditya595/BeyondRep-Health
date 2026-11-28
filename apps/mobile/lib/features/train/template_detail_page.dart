@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,20 +5,18 @@ import 'package:go_router/go_router.dart';
 import '../../core/design/beyondrep_theme.dart';
 import '../../core/design/dialogs.dart';
 import '../../core/design/page_header.dart';
-import '../../core/ids/uuid_factory.dart';
 import '../catalog/application/catalog_providers.dart';
 import '../catalog/application/exercise_choices_provider.dart';
 import '../catalog/domain/catalog_models.dart';
 import '../catalog/domain/catalog_templates.dart';
 import '../health/widgets/readiness_note.dart';
-import '../workouts/data/objectbox_workout_library_repository.dart';
 import '../watch/widgets/live_watch_auto_open.dart';
 import 'active_workout_state.dart';
 import 'train_library_state.dart';
 import 'workout_templates_page.dart';
 
-/// One template: every exercise with its sets, reps or seconds and rest, and
-/// two ways to use it, starting now or copying it into My Plans.
+/// One ready-made workout: every exercise with its sets, reps or seconds and
+/// rest, and a button to start it now.
 class TemplateDetailPage extends ConsumerStatefulWidget {
   const TemplateDetailPage({
     required this.templateId,
@@ -38,65 +34,7 @@ class TemplateDetailPage extends ConsumerStatefulWidget {
 }
 
 class _TemplateDetailPageState extends ConsumerState<TemplateDetailPage> {
-  // One request UUID per copy: a repeated tap reuses it (the repository
-  // returns the same plan) and a finished copy makes a fresh one.
-  var _request = SecureUuidFactory().newId();
   var _busy = false;
-  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _saved;
-
-  @override
-  void dispose() {
-    // The Edit action needs this page; take it away with the page.
-    try {
-      _saved?.close();
-    } on StateError {
-      // Already gone (timed out or replaced).
-    }
-    super.dispose();
-  }
-
-  Future<void> _copy(CatalogTemplate template, CatalogSnapshot snapshot) async {
-    if (_busy) return;
-    _busy = true;
-    setState(() {});
-    // Let the disabled buttons paint before the (synchronous) write.
-    await Future<void>.delayed(Duration.zero);
-    if (!mounted) return;
-    try {
-      final plan = ref
-          .read(workoutLibraryRepositoryProvider)
-          .copyCatalogTemplate(
-            requestUuid: _request,
-            name: template.name,
-            description: template.description,
-            rows: templateRowInputs(template, snapshot),
-            release: snapshot.release,
-          );
-      _request = SecureUuidFactory().newId();
-      ref.invalidate(trainLibraryProvider);
-      final router = GoRouter.of(context);
-      final saved = showNsMessage(
-        context,
-        'Saved to My Plans as ${plan.name}',
-        actionLabel: 'Edit',
-        onAction: () async {
-          if (!mounted) return;
-          await router.push<void>('/train/plans/${plan.uuid}/edit');
-          if (mounted) ref.invalidate(trainLibraryProvider);
-        },
-      );
-      _saved = saved;
-      unawaited(
-        saved.closed.then((_) {
-          if (identical(_saved, saved)) _saved = null;
-        }),
-      );
-    } on Object {
-      showNsMessage(context, 'Could not copy this workout. Try again.');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
 
   Future<void> _start(
     CatalogTemplate template,
@@ -138,8 +76,7 @@ class _TemplateDetailPageState extends ConsumerState<TemplateDetailPage> {
   void _startFailed() {
     showNsMessage(
       context,
-      'Could not start this workout. Check the plan and any unfinished '
-      'workout.',
+      'Could not start this workout. Check any unfinished workout.',
     );
     ref.invalidate(activeWorkoutProvider);
   }
@@ -181,7 +118,6 @@ class _TemplateDetailPageState extends ConsumerState<TemplateDetailPage> {
                   snapshot: snapshot,
                   busy: _busy,
                   onStart: () => _start(template!, snapshot),
-                  onCopy: () => _copy(template!, snapshot),
                 ),
         ),
       ),
@@ -195,14 +131,12 @@ class _Detail extends StatelessWidget {
     required this.snapshot,
     required this.busy,
     required this.onStart,
-    required this.onCopy,
   });
 
   final CatalogTemplate template;
   final CatalogSnapshot snapshot;
   final bool busy;
   final VoidCallback onStart;
-  final VoidCallback onCopy;
 
   @override
   Widget build(BuildContext context) {
@@ -243,15 +177,6 @@ class _Detail extends StatelessWidget {
           ),
           icon: const Icon(Icons.play_arrow),
           label: const Text('Start now'),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: busy ? null : onCopy,
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 46),
-          ),
-          icon: const Icon(Icons.copy_outlined),
-          label: const Text('Copy to My Plans'),
         ),
         const SizedBox(height: 20),
         for (final row in template.exercises)

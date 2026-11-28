@@ -22,6 +22,8 @@ import '../features/train/template_detail_page.dart';
 import '../features/train/my_program_page.dart';
 import '../features/train/program_detail_page.dart';
 import '../features/train/programs_page.dart';
+import '../features/train/create_program_page.dart';
+import '../features/programs/domain/program_models.dart';
 import '../features/train/workout_templates_page.dart';
 import '../features/train/exercise_detail_page.dart';
 import '../features/train/plan_editor_page.dart';
@@ -111,6 +113,17 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const ProgramsPage(),
           ),
           GoRoute(
+            path: '/train/programs/new',
+            builder: (_, _) => const CreateProgramPage(),
+          ),
+          GoRoute(
+            path: '/train/programs/new/workout',
+            builder: (_, state) => PlanEditorPage(
+              returnDraft: true,
+              initialDraft: state.extra as DraftWorkoutSource?,
+            ),
+          ),
+          GoRoute(
             path: '/train/programs/:id',
             builder: (_, state) =>
                 ProgramDetailPage(programId: state.pathParameters['id']!),
@@ -130,8 +143,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                 ExerciseDetailPage(exerciseId: state.pathParameters['id']!),
           ),
           GoRoute(
-            path: '/train/plans/new',
-            builder: (_, _) => const PlanEditorPage(),
+            path: '/train/programs/:uuid/workouts/new',
+            builder: (_, state) => PlanEditorPage(
+              programUuid: state.pathParameters['uuid'],
+              programDay: int.tryParse(state.uri.queryParameters['day'] ?? ''),
+            ),
           ),
           GoRoute(
             path: '/train/plans/:id/edit',

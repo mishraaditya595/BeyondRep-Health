@@ -4,10 +4,15 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/clock.dart';
 import '../../core/date_labels.dart';
+import '../../core/ids/uuid_factory.dart';
 import '../../core/design/dialogs.dart';
 import '../../core/design/inputs.dart';
 import '../../core/design/page_header.dart';
 import '../../core/design/section.dart';
+import '../../core/ui/dispose_after_dialog.dart';
+import '../catalog/application/catalog_providers.dart';
+import '../catalog/application/exercise_choices_provider.dart';
+import '../catalog/domain/catalog_templates.dart';
 import '../programs/application/program_providers.dart';
 import '../programs/data/objectbox_program_repository.dart';
 import '../programs/domain/program_models.dart';
@@ -16,9 +21,10 @@ import '../programs/domain/program_schedule.dart';
 import '../programs/domain/program_status.dart';
 import '../programs/presentation/start_program_day.dart';
 import '../workouts/data/objectbox_workout_library_repository.dart';
+import 'plan_fit_widgets.dart';
 import 'program_weekday_sheet.dart';
-
-const _rest = '';
+import 'train_library_state.dart';
+import 'workout_source_sheet.dart';
 
 /// A program the user added: today's workout, the weekly schedule and its
 /// editing, and activation and archive.
@@ -44,6 +50,7 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
     TrainingProgramRecord program, {
     DateTime? missedDate,
     String? missedPlanUuid,
+    String? swapPlanUuid,
   }) async {
     if (_busy) return;
     _busy = true;
@@ -55,6 +62,7 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
         program,
         missedDate: missedDate,
         missedPlanUuid: missedPlanUuid,
+        swapPlanUuid: swapPlanUuid,
         onFailed: _failed,
       );
     } finally {
@@ -65,6 +73,8 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
   void _write(void Function(ProgramRepository) action) {
     try {
       action(ref.read(programRepositoryProvider));
+    } on ProgramWorkoutLimit {
+      _failed('A program can hold up to $maxProgramWorkouts workouts.');
     } on Object {
       _failed('Could not save this change. Try again.');
     }
@@ -78,63 +88,136 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
     final plans = ref
         .read(programRepositoryProvider)
         .programPlans(program.uuid);
-    final current = entry.day.planUuid ?? _rest;
-    final result = await showNsSheet<(String, String)>(
+    final choice = await showDaySheet(
       context,
-      heightFactor: 0.55,
-      builder: (sheetContext) => ListView(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          16,
-          16,
-          20 + MediaQuery.paddingOf(sheetContext).bottom,
-        ),
-        children: [
-          Text(
-            weekdayNames[entry.weekday - 1],
-            style: Theme.of(sheetContext).textTheme.titleMedium
-                ?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 14),
-          if (entry.day.planUuid != null) ...[
-            FilledButton.icon(
-              onPressed: () =>
-                  Navigator.pop(sheetContext, ('edit', entry.day.planUuid!)),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(double.infinity, 46),
-              ),
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('Edit workout'),
-            ),
-            const SizedBox(height: 14),
-          ],
-          NsDropdown<String>(
-            label: 'Change to…',
-            value: current,
-            options: [
-              for (final plan in plans) NsOption(plan.uuid, plan.name),
-              const NsOption(_rest, 'Rest'),
-            ],
-            onChanged: (value) {
-              if (value != current) Navigator.pop(sheetContext, ('set', value));
-            },
-          ),
-        ],
-      ),
+      ref,
+      title: weekdayNames[entry.weekday - 1],
+      existing: {for (final plan in plans) plan.uuid: plan.name},
+      current: entry.day.planUuid,
+      canAddWorkout: plans.length < maxProgramWorkouts,
     );
-    if (result == null || !mounted) return;
-    if (result.$1 == 'edit') {
-      await context.push<void>('/train/plans/${result.$2}/edit');
-      if (mounted) invalidatePrograms(ref);
-      return;
-    }
-    _write(
-      (repo) => repo.setDayPlan(
+    if (choice == null || !mounted) return;
+    void setDay(String? planUuid) => _write(
+      (repo) => repo.setDayPlan(program.uuid, entry.day.dayIndex, planUuid),
+    );
+    // One repository call creates the workout and sets the day.
+    void addAndSet(ProgramWorkoutSource source) => _write(
+      (repo) => repo.addWorkout(
         program.uuid,
-        entry.day.dayIndex,
-        result.$2.isEmpty ? null : result.$2,
+        source,
+        dayIndex: entry.day.dayIndex,
+        requestUuid: SecureUuidFactory().newId(),
       ),
     );
+
+    switch (choice) {
+      case RestChoice():
+        setDay(null);
+      case ExistingChoice(:final key):
+        setDay(key);
+      case EditChoice(:final key):
+        await context.push<void>('/train/plans/$key/edit');
+        if (mounted) invalidatePrograms(ref);
+      case NewWorkoutChoice():
+        await context.push<String>(
+          '/train/programs/${program.uuid}/workouts/new'
+          '?day=${entry.day.dayIndex}',
+        );
+        if (mounted) invalidatePrograms(ref);
+      case TemplateChoice(:final template):
+        final snapshot = safeCatalogState(() => ref.read(catalogStateProvider))
+            .snapshot;
+        if (snapshot == null) {
+          _failed('Ready-made workouts are not available now.');
+          return;
+        }
+        try {
+          addAndSet(
+            TemplateWorkoutSource(
+              name: template.name,
+              description: template.description,
+              rows: templateRowInputs(template, snapshot),
+              release: snapshot.release,
+            ),
+          );
+        } on Object {
+          _failed('Could not save this change. Try again.');
+        }
+      case SavedPlanChoice(:final planUuid):
+        addAndSet(CopyWorkoutSource(planUuid));
+    }
+  }
+
+  Future<void> _editDetails(TrainingProgramRecord program) async {
+    final name = TextEditingController(text: program.name);
+    final description = TextEditingController(text: program.description);
+    String? error;
+    try {
+      await showNsDialog<void>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, updateDialog) => NsDialog(
+            title: 'Edit program',
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    NsTextField(
+                      controller: name,
+                      maxLength: 100,
+                      textCapitalization: TextCapitalization.words,
+                      label: 'Name',
+                    ),
+                    const SizedBox(height: 10),
+                    NsTextField(
+                      controller: description,
+                      maxLength: 1000,
+                      minLines: 2,
+                      maxLines: 3,
+                      label: 'Description (optional)',
+                    ),
+                    if (error != null)
+                      Text(
+                        error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  if (name.text.trim().isEmpty) {
+                    updateDialog(() => error = 'Give the program a name.');
+                    return;
+                  }
+                  Navigator.pop(dialogContext);
+                  _write(
+                    (repo) => repo.updateDetails(
+                      program.uuid,
+                      name: name.text,
+                      description: description.text,
+                    ),
+                  );
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } finally {
+      disposeAfterDialog([name, description]);
+    }
   }
 
   Future<void> _changeStartDay(TrainingProgramRecord program) async {
@@ -187,6 +270,14 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
       appBar: AppBar(
         leading: const NsBackButton(),
         title: const Text('Your program'),
+        actions: [
+          if (program != null)
+            IconButton(
+              onPressed: () => _editDetails(program),
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Edit name',
+            ),
+        ],
       ),
       body: Center(
         child: ConstrainedBox(
@@ -225,6 +316,9 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
     final name = entry.day.planUuid == null
         ? 'Rest'
         : _planName(entry.day.planUuid!);
+    final recovery = planRecoveryLine(
+      ref.watch(planFitProvider)?.byPlan[entry.day.planUuid],
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Column(
@@ -239,7 +333,8 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
             // The Today and Done tags already say it.
             subtitle:
                 'Day ${entry.day.dayIndex + 1}'
-                '${entry.day.dayIndex == todayIndex && status != ProgramDayStatus.today && status != ProgramDayStatus.done ? ' · Today' : ''}',
+                '${entry.day.dayIndex == todayIndex && status != ProgramDayStatus.today && status != ProgramDayStatus.done ? ' · Today' : ''}'
+                '$recovery',
             trailing: tag == null
                 ? null
                 : NsTag(tag, warning: status == ProgramDayStatus.missed),
@@ -258,6 +353,35 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
         ],
       ),
     );
+  }
+
+  /// The suggestion card, only for an active program with a workout still to
+  /// do today when another of its workouts fits better.
+  List<Widget> _betterFit(
+    TrainingProgramRecord program,
+    ProgramWeekRow? todayRow,
+    String? todayPlan,
+    bool todayAvailable,
+  ) {
+    final fit = ref.watch(planFitProvider);
+    final suggestion = fit?.suggestion;
+    if (!program.isActive ||
+        suggestion == null ||
+        todayPlan == null ||
+        !todayAvailable ||
+        todayRow?.status == ProgramDayStatus.done ||
+        suggestion.plan.planUuid == todayPlan) {
+      return const [];
+    }
+    final suggested = suggestion.plan.planUuid;
+    return [
+      const SizedBox(height: 16),
+      BetterFitCard(
+        name: _planName(suggested),
+        suggestion: suggestion,
+        onStart: () => _busy ? null : _start(program, swapPlanUuid: suggested),
+      ),
+    ];
   }
 
   Widget _body(
@@ -333,6 +457,7 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
             icon: const Icon(Icons.play_arrow),
             label: const Text("Start today's workout"),
           ),
+        ..._betterFit(program, todayRow, todayPlan, todayAvailable),
         const SizedBox(height: 20),
         const SectionHeading('This week'),
         if (week.every((e) => e.day.planUuid == null))

@@ -14,14 +14,13 @@ import '../account/account_auth_provider.dart';
 import '../health/widgets/readiness_note.dart';
 import '../health/widgets/today_health_row.dart';
 import '../programs/application/program_providers.dart';
+import '../train/quick_workout.dart';
 import '../programs/domain/program_models.dart';
 import '../progress/domain/progress_overview.dart';
-import '../progress/domain/workout_history_models.dart';
 import '../progress/workout_history_state.dart';
 import '../sync/workout_upload_coordinator.dart';
 import '../sync/workout_conflict_resolution.dart';
 import '../train/active_workout_state.dart';
-import '../train/train_library_state.dart';
 import '../watch/widgets/watch_status_banner.dart';
 import '../watch/widgets/live_watch_auto_open.dart';
 import '../watch/widgets/live_watch_workout_card.dart';
@@ -48,27 +47,6 @@ class _TodayPageState extends ConsumerState<TodayPage> {
       .values
       .where((value) => value == flag)
       .length;
-
-  Future<void> _open(String route) async {
-    await context.push<void>(route);
-    ref.invalidate(trainLibraryProvider);
-  }
-
-  Future<void> _startPlan(String uuid) async {
-    if (openLiveWatchWorkoutInstead(context, ref)) return;
-    if (!await confirmReadinessBeforeStart(context, ref) || !mounted) return;
-    try {
-      ref.read(workoutActionsProvider).startPlan(uuid);
-      ref.invalidate(activeWorkoutProvider);
-      context.push('/train/workout');
-    } catch (_) {
-      showNsMessage(
-        context,
-        'Could not start this workout. Check the plan and any unfinished workout.',
-      );
-      ref.invalidate(activeWorkoutProvider);
-    }
-  }
 
   /// Starts today's program workout, or the missed day [missedDate].
   Future<void> _startProgramDay(
@@ -118,7 +96,7 @@ class _TodayPageState extends ConsumerState<TodayPage> {
       if (!mounted) return;
       showNsMessage(
         context,
-        'Could not start this workout. Check the plan and any unfinished '
+        'Could not start this workout. Check the program and any unfinished '
         'workout.',
       );
       ref.invalidate(activeWorkoutProvider);
@@ -148,7 +126,6 @@ class _TodayPageState extends ConsumerState<TodayPage> {
     final now = ref.watch(localNowProvider);
     final week = ref.watch(programWeekProvider);
     final today = DateTime.utc(now.year, now.month, now.day);
-    final library = ref.watch(trainLibraryProvider);
     final history = ref.watch(completedWorkoutHistoryProvider);
     final active = ref.watch(activeWorkoutProvider);
     final unfinished = active.value;
@@ -178,31 +155,16 @@ class _TodayPageState extends ConsumerState<TodayPage> {
               ref.invalidate(programWeekProvider);
             },
           )
-        // A reload keeps showing the last value instead of a spinner.
-        : library.hasValue && history.hasValue
-        ? _Hero(
-            next: nextPlan(library.value!.plans, history.value!.sessions),
-            onStart: _startPlan,
-            onOpen: _open,
-            onTrain: () => context.go('/train'),
-          )
-        : library.hasError || history.hasError
+        : ref.watch(programsLoadFailedProvider)
         ? NsHeroFrame(
-            eyebrow: 'NEXT UP',
-            title: 'Could not load your plans',
-            subtitle: 'Your local plans and workouts were not changed.',
-            actions: [
-              NsHeroAction('Retry', () {
-                ref.invalidate(trainLibraryProvider);
-                ref.invalidate(completedWorkoutHistoryProvider);
-              }),
-            ],
+            eyebrow: 'YOUR PROGRAM',
+            title: 'Could not load your program',
+            subtitle: 'Your local workouts were not changed.',
+            actions: [NsHeroAction('Retry', () => invalidatePrograms(ref))],
           )
-        : const NsHeroFrame(
-            eyebrow: 'NEXT UP',
-            title: null,
-            subtitle: null,
-            actions: [],
+        : _Hero(
+            onOpen: (route) => context.push<void>(route),
+            onQuick: () => startQuickWorkout(context, ref),
           );
     final missed = week != null && unfinished == null && !active.hasError
         ? TodayMissedLine(
@@ -358,48 +320,24 @@ class _WeekCard extends StatelessWidget {
   }
 }
 
-/// Suggests the next saved plan; there is no schedule, see [nextPlan].
+/// Shown without an active program: pick one, or start a quick workout.
 class _Hero extends StatelessWidget {
-  const _Hero({
-    required this.next,
-    required this.onStart,
-    required this.onOpen,
-    required this.onTrain,
-  });
+  const _Hero({required this.onOpen, required this.onQuick});
 
-  final NextPlan? next;
-  final void Function(String planUuid) onStart;
   final void Function(String route) onOpen;
-  final VoidCallback onTrain;
+  final VoidCallback onQuick;
 
   @override
   Widget build(BuildContext context) {
-    final suggestion = next;
-    if (suggestion == null) {
-      return NsHeroFrame(
-        eyebrow: 'GET STARTED',
-        title: 'No plans yet',
-        subtitle:
-            'Create a plan, or go to Train for a quick workout and add '
-            'exercises as you go.',
-        actions: [
-          NsHeroAction('Create a plan', () => onOpen('/train/plans/new')),
-          NsHeroAction('Go to Train', onTrain),
-        ],
-      );
-    }
-    final plan = suggestion.plan;
-    final count = plan.exercises.length;
-    final last = suggestion.lastDone;
     return NsHeroFrame(
-      eyebrow: 'NEXT UP',
-      title: plan.name,
+      eyebrow: 'GET STARTED',
+      title: 'No program yet',
       subtitle:
-          '$count ${count == 1 ? 'exercise' : 'exercises'} · '
-          '${last == null ? 'Not done yet' : 'Last done ${formatWorkoutDay(originalLocalDay(last))}'}',
+          'Pick a program to get a workout each day, or start a quick '
+          'workout and add exercises as you go.',
       actions: [
-        NsHeroAction('Start workout', () => onStart(plan.uuid)),
-        NsHeroAction('Edit', () => onOpen('/train/plans/${plan.uuid}/edit')),
+        NsHeroAction('Pick a program', () => onOpen('/train/programs')),
+        NsHeroAction('Quick workout', onQuick),
       ],
     );
   }

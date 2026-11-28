@@ -7,8 +7,10 @@ import 'package:beyondrep/features/health/application/health_overview.dart';
 import 'package:beyondrep/features/health/application/health_summary_controller.dart';
 import 'package:beyondrep/features/health/domain/energy.dart';
 import 'package:beyondrep/features/health/domain/readiness.dart';
+import 'package:beyondrep/features/health/widgets/readiness_strip.dart';
 import 'package:beyondrep/features/programs/data/objectbox_program_repository.dart';
 import 'package:beyondrep/features/train/active_workout_state.dart';
+import 'package:beyondrep/features/workouts/data/objectbox_workout_library_repository.dart';
 import 'package:beyondrep/features/workouts/data/workout_entities.dart';
 import 'package:beyondrep/features/workouts/domain/live_workout_engine.dart';
 import 'package:beyondrep/features/workouts/domain/workout_models.dart';
@@ -182,15 +184,15 @@ void main() {
         find.text('Fair energy. Train as planned, watch effort.'),
         findsOneWidget,
       );
-      expect(find.text('Your plans are not changed'), findsNothing);
+      expect(find.text('Your workouts are not changed'), findsNothing);
     });
 
-    testWidgets('low strip says plans are not changed and uses red', (
+    testWidgets('low strip says workouts are not changed and uses red', (
       tester,
     ) async {
       await open(tester, health: _today(_ready(41)));
       expect(find.text('Low energy. Take it easier.'), findsOneWidget);
-      expect(find.text('Your plans are not changed'), findsOneWidget);
+      expect(find.text('Your workouts are not changed'), findsOneWidget);
       final score = tester.widget<Text>(find.text('41'));
       expect(score.style?.color, BeyondRepPalette.redLight);
     });
@@ -230,10 +232,12 @@ void main() {
           'Still learning your patterns: 3 more workouts for a calibrated score.';
       expect(find.text('Low energy. Take it easier.'), findsOneWidget);
       expect(find.text(learning), findsOneWidget);
-      expect(find.text('Your plans are not changed'), findsOneWidget);
+      expect(find.text('Your workouts are not changed'), findsOneWidget);
       expect(
         tester.getTopLeft(find.text(learning)).dy,
-        lessThan(tester.getTopLeft(find.text('Your plans are not changed')).dy),
+        lessThan(
+          tester.getTopLeft(find.text('Your workouts are not changed')).dy,
+        ),
       );
       expect(
         find.bySemanticsLabel('Energy 45, Take it easier. $learning See why'),
@@ -293,7 +297,13 @@ void main() {
         find.text('Energy starts after 5 more days with data.'),
         findsOneWidget,
       );
-      expect(find.byIcon(Icons.chevron_right), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(ReadinessStrip),
+          matching: find.byIcon(Icons.chevron_right),
+        ),
+        findsNothing,
+      );
     });
 
     for (final (name, health) in <(String, HealthOverview?)>[
@@ -494,6 +504,82 @@ void main() {
       );
     });
   }
+
+  group('Train without plans', () {
+    void expectNoPlans() {
+      for (final text in [
+        'Your plans',
+        'Create training plan',
+        'Better fit today',
+        'No plans yet',
+      ]) {
+        expect(find.text(text), findsNothing, reason: text);
+      }
+    }
+
+    testWidgets('offers Quick workout and the library cards', (tester) async {
+      ObjectBoxWorkoutLibraryRepository(store).savePlan(
+        uuid: 'old-1',
+        name: 'Old routine',
+        description: '',
+        exercises: const [],
+      );
+      await open(tester, health: _today(_ready(82)));
+      expectNoPlans();
+      expect(find.text('Old routine'), findsNothing);
+      expect(
+        find.text(
+          'Start recording reps and weights offline, or follow a program.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Quick workout'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Exercise library'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Programs'), findsOneWidget);
+      expect(find.text('Ready-made and your own'), findsOneWidget);
+      expect(find.text('Workouts'), findsOneWidget);
+      expect(find.text('Ready-made sessions to start'), findsOneWidget);
+      expect(find.text('Exercise library'), findsOneWidget);
+    });
+
+    testWidgets('with an active program the program card stays', (
+      tester,
+    ) async {
+      seedProgram();
+      await open(tester, health: _today(_ready(82)));
+      expectNoPlans();
+      expect(find.text('Your program'), findsOneWidget);
+      expect(find.text('Start Synthetic push'), findsOneWidget);
+    });
+
+    testWidgets('Quick workout with an unfinished workout says to check it', (
+      tester,
+    ) async {
+      await open(
+        tester,
+        health: _today(_ready(82)),
+        overrides: [
+          activeWorkoutProvider.overrideWith(
+            (ref) => AsyncData<ActiveWorkoutView?>(_unfinished()),
+          ),
+        ],
+      );
+      await tester.tap(find.text('Quick workout'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Start workout'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Could not start this workout. Check any unfinished workout.',
+        ),
+        findsOneWidget,
+      );
+    });
+  });
 
   testWidgets('start card stays on screen at 2x text and 320 dp', (
     tester,

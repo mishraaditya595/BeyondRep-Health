@@ -121,21 +121,21 @@ void main() {
   });
 
   group('watchSentSummary', () {
-    test('lists readiness, health and plans', () {
+    test('lists readiness, health and workouts', () {
       expect(
         watchSentSummary(hasReadiness: true, hasHealth: true, planCount: 3),
-        'Energy, health, 3 plans',
+        'Energy, health, 3 workouts',
       );
     });
 
     test('leaves out what was not sent and capitalizes the first word', () {
       expect(
         watchSentSummary(hasReadiness: false, hasHealth: true, planCount: 1),
-        'Health, 1 plan',
+        'Health, 1 workout',
       );
       expect(
         watchSentSummary(hasReadiness: false, hasHealth: false, planCount: 2),
-        '2 plans',
+        '2 workouts',
       );
       expect(
         watchSentSummary(hasReadiness: false, hasHealth: false, planCount: 0),

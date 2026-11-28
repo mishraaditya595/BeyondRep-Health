@@ -91,12 +91,17 @@ WorkoutLibrarySnapshot _library(List<WorkoutPlanRecord> plans) =>
       plans: plans,
     );
 
-ProgramWeek _week(WorkoutPlanRecord todayPlan) {
-  final day = ProgramDayRecord(
-    uuid: 'day-1',
-    dayIndex: 0,
-    planUuid: todayPlan.uuid,
-  );
+/// An active program whose workouts are [plans]; [days] names the plan on
+/// each of the seven days (null is rest) and [todayIndex] is today's day.
+ProgramWeek _programWeek(
+  List<WorkoutPlanRecord> plans, {
+  List<String?> days = const [null, null, null, null, null, null, null],
+  int todayIndex = 0,
+}) {
+  final records = [
+    for (var i = 0; i < 7; i++)
+      ProgramDayRecord(uuid: 'day-$i', dayIndex: i, planUuid: days[i]),
+  ];
   return ProgramWeek(
     program: TrainingProgramRecord(
       uuid: 'program-1',
@@ -107,18 +112,23 @@ ProgramWeek _week(WorkoutPlanRecord todayPlan) {
       firstDayWeekday: 1,
       isActive: true,
       updatedAtMs: 0,
-      days: [day],
+      days: records,
     ),
     localToday: DateTime(2026, 11, 24, 8),
     rows: [
-      (
-        date: DateTime(2026, 11, 24),
-        dayIndex: 0,
-        day: day,
-        status: ProgramDayStatus.today,
-      ),
+      for (var i = 0; i < 7; i++)
+        (
+          date: DateTime(2026, 11, 24 + i - todayIndex),
+          dayIndex: i,
+          day: records[i],
+          status: days[i] == null
+              ? ProgramDayStatus.rest
+              : i == todayIndex
+              ? ProgramDayStatus.today
+              : ProgramDayStatus.upcoming,
+        ),
     ],
-    plans: {todayPlan.uuid: todayPlan},
+    plans: {for (final p in plans) p.uuid: p},
     latestMissed: null,
     nextTraining: null,
   );
@@ -615,45 +625,69 @@ void main() {
   });
 
   group('plans snapshot', () {
-    test(
-      "puts today's program plan first, then most recent use, then name",
-      () {
-        final a = _plan('plan-a', 'Alpha');
-        final b = _plan('plan-b', 'Bravo');
-        final c = _plan('plan-c', 'Charlie');
-        final today = _plan('plan-today', 'Zulu program day');
-        final m = buildPlansSnapshot(
-          accountKey: _key,
-          library: _library([a, b, c]),
-          week: _week(today),
-          recentSessions: [
-            _session(
-              's1',
-              planUuid: 'plan-c',
-              completedAt: DateTime.utc(2026, 11, 20),
-            ),
-            _session(
-              's2',
-              planUuid: 'plan-b',
-              completedAt: DateTime.utc(2026, 11, 22),
-            ),
-          ],
-          nowUtc: _now,
-          messageId: _id,
-        );
-        final names = [for (final p in m.plans) (p! as Map)['name']];
-        expect(names, ['Zulu program day', 'Bravo', 'Charlie', 'Alpha']);
-        expect(m.today, {
-          'plan_id': 'plan-today',
-          'program_id': 'program-1',
-          'local_date': '2026-11-24',
-          'label': 'Zulu program day',
-        });
-        _roundTrip(m);
-      },
-    );
+    List<Object?> names(PlansSnapshot m) => [
+      for (final p in m.plans) (p! as Map)['name'],
+    ];
 
-    test('no today without a program workout today', () {
+    test("puts today's workout first, then the program's by day, then the "
+        'unused ones by name', () {
+      final push = _plan('plan-push', 'Push');
+      final pull = _plan('plan-pull', 'Pull');
+      final legs = _plan('plan-legs', 'Legs');
+      final zeta = _plan('plan-zeta', 'Zeta unused');
+      final alpha = _plan('plan-alpha', 'Alpha unused');
+      final week = _programWeek(
+        [zeta, legs, pull, push, alpha],
+        // Today (day 2) is Pull; Push is used twice.
+        days: const [
+          'plan-push',
+          null,
+          'plan-pull',
+          'plan-legs',
+          'plan-push',
+          null,
+          null,
+        ],
+        todayIndex: 2,
+      );
+      final m = buildPlansSnapshot(
+        accountKey: _key,
+        library: _library([_plan('own', 'Standalone')]),
+        week: week,
+        recentSessions: const [],
+        nowUtc: _now,
+        messageId: _id,
+      );
+      expect(names(m), ['Pull', 'Push', 'Legs', 'Alpha unused', 'Zeta unused']);
+      expect(m.today, {
+        'plan_id': 'plan-pull',
+        'program_id': 'program-1',
+        'local_date': '2026-11-24',
+        'label': 'Pull',
+      });
+      _roundTrip(m);
+    });
+
+    test('a rest day today still lists the program workouts, no today', () {
+      final push = _plan('plan-push', 'Push');
+      final m = buildPlansSnapshot(
+        accountKey: _key,
+        library: _library(const []),
+        week: _programWeek(
+          [push],
+          days: const ['plan-push', null, null, null, null, null, null],
+          todayIndex: 1,
+        ),
+        recentSessions: const [],
+        nowUtc: _now,
+        messageId: _id,
+      );
+      expect(m.today, isNull);
+      expect(names(m), ['Push']);
+    });
+
+    test('without an active program nothing is listed and there is no '
+        'today, even with saved workouts', () {
       final m = buildPlansSnapshot(
         accountKey: _key,
         library: _library([_plan('plan-a', 'Alpha')]),
@@ -663,10 +697,47 @@ void main() {
         messageId: _id,
       );
       expect(m.today, isNull);
-      expect(m.plans, hasLength(1));
+      expect(m.plans, isEmpty);
+      _roundTrip(m);
     });
 
-    test('maps targets, kind and rest from the plan', () {
+    test('a workout with a blank name is sent as Workout', () {
+      final m = buildPlansSnapshot(
+        accountKey: _key,
+        library: _library(const []),
+        week: _programWeek([_plan('plan-a', '')]),
+        recentSessions: const [],
+        nowUtc: _now,
+        messageId: _id,
+      );
+      expect(names(m), ['Workout']);
+    });
+
+    test('maps targets, kind and rest from the workout', () {
+      final mixed = WorkoutPlanRecord(
+        uuid: 'p',
+        name: 'Mixed',
+        description: '',
+        updatedAtMs: 0,
+        exercises: const [
+          PlanExerciseRecord(
+            uuid: 'a',
+            exerciseUuid: 'ex-0',
+            position: 0,
+            targetSets: 2,
+            targetRepsMin: 8,
+            targetRepsMax: 12,
+            restSeconds: 60,
+          ),
+          PlanExerciseRecord(
+            uuid: 'b',
+            exerciseUuid: 'ex-1',
+            position: 1,
+            targetSets: 1,
+            targetDurationSeconds: 45,
+          ),
+        ],
+      );
       final m = buildPlansSnapshot(
         accountKey: _key,
         library: WorkoutLibrarySnapshot(
@@ -674,34 +745,9 @@ void main() {
             _exercise(0),
             _exercise(1, mode: 'duration'),
           ],
-          plans: [
-            WorkoutPlanRecord(
-              uuid: 'p',
-              name: 'Mixed',
-              description: '',
-              updatedAtMs: 0,
-              exercises: const [
-                PlanExerciseRecord(
-                  uuid: 'a',
-                  exerciseUuid: 'ex-0',
-                  position: 0,
-                  targetSets: 2,
-                  targetRepsMin: 8,
-                  targetRepsMax: 12,
-                  restSeconds: 60,
-                ),
-                PlanExerciseRecord(
-                  uuid: 'b',
-                  exerciseUuid: 'ex-1',
-                  position: 1,
-                  targetSets: 1,
-                  targetDurationSeconds: 45,
-                ),
-              ],
-            ),
-          ],
+          plans: const [],
         ),
-        week: null,
+        week: _programWeek([mixed]),
         recentSessions: const [],
         nowUtc: _now,
         messageId: _id,
@@ -761,7 +807,7 @@ void main() {
       _roundTrip(m);
     });
 
-    test('archived plans are left out', () {
+    test('archived workouts are left out', () {
       final archived = WorkoutPlanRecord(
         uuid: 'gone',
         name: 'Gone',
@@ -772,17 +818,17 @@ void main() {
       );
       final m = buildPlansSnapshot(
         accountKey: _key,
-        library: _library([archived, _plan('plan-a', 'Alpha')]),
-        week: null,
+        library: _library(const []),
+        week: _programWeek([archived, _plan('plan-a', 'Alpha')]),
         recentSessions: const [],
         nowUtc: _now,
         messageId: _id,
       );
-      expect([for (final p in m.plans) (p! as Map)['name']], ['Alpha']);
+      expect(names(m), ['Alpha']);
     });
 
     test(
-      '150 plans x 40 exercises stays under 60000 bytes and within caps',
+      '150 workouts x 40 exercises stays under 60000 bytes and within caps',
       () {
         final plans = [
           for (var i = 0; i < 150; i++)
@@ -794,10 +840,14 @@ void main() {
             ),
         ];
         final today = _plan('plan-today', 'Program day', exercises: 40);
+        final week = _programWeek(
+          [today, ...plans],
+          days: const ['plan-today', null, null, null, null, null, null],
+        );
         final m = buildPlansSnapshot(
           accountKey: _key,
-          library: _library(plans),
-          week: _week(today),
+          library: _library(const []),
+          week: week,
           recentSessions: const [],
           nowUtc: _now,
           messageId: _id,
@@ -811,8 +861,8 @@ void main() {
         // Deterministic: the same input gives the same output.
         final again = buildPlansSnapshot(
           accountKey: _key,
-          library: _library(plans),
-          week: _week(today),
+          library: _library(const []),
+          week: week,
           recentSessions: const [],
           nowUtc: _now,
           messageId: _id,
@@ -821,37 +871,53 @@ void main() {
       },
     );
 
-    test('a plan too large for the limit is skipped and later plans stay', () {
-      final m = buildPlansSnapshot(
-        accountKey: _key,
-        library: _library([
-          _plan('plan-big', 'A huge plan', exercises: 40, sets: 30),
-          _plan('plan-small', 'B small plan'),
-        ]),
-        week: null,
-        recentSessions: const [],
-        nowUtc: _now,
-        messageId: _id,
-      );
-      expect([for (final p in m.plans) (p! as Map)['name']], ['B small plan']);
-    });
+    test(
+      'a workout too large for the limit is skipped and later ones stay',
+      () {
+        final m = buildPlansSnapshot(
+          accountKey: _key,
+          library: _library(const []),
+          week: _programWeek(
+            [
+              _plan('plan-big', 'A huge workout', exercises: 40, sets: 30),
+              _plan('plan-small', 'B small workout'),
+            ],
+            days: const [
+              'plan-big',
+              'plan-small',
+              null,
+              null,
+              null,
+              null,
+              null,
+            ],
+            todayIndex: 3,
+          ),
+          recentSessions: const [],
+          nowUtc: _now,
+          messageId: _id,
+        );
+        expect(names(m), ['B small workout']);
+      },
+    );
 
     test('maxBytes budgets the plans snapshot below the full limit', () {
       final plans = [
         for (var i = 0; i < 20; i++) _plan('plan-$i', 'Plan $i', exercises: 10),
       ];
+      final week = _programWeek(plans);
       final full = buildPlansSnapshot(
         accountKey: _key,
-        library: _library(plans),
-        week: null,
+        library: _library(const []),
+        week: week,
         recentSessions: const [],
         nowUtc: _now,
         messageId: _id,
       );
       final small = buildPlansSnapshot(
         accountKey: _key,
-        library: _library(plans),
-        week: null,
+        library: _library(const []),
+        week: week,
         recentSessions: const [],
         nowUtc: _now,
         messageId: _id,
@@ -866,8 +932,8 @@ void main() {
       final long = 'n' * 300;
       final m = buildPlansSnapshot(
         accountKey: _key,
-        library: _library([_plan('p' * 200, long)]),
-        week: null,
+        library: _library(const []),
+        week: _programWeek([_plan('p' * 200, long)]),
         recentSessions: const [],
         nowUtc: _now,
         messageId: _id,
