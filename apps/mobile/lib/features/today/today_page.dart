@@ -14,6 +14,7 @@ import '../account/account_auth_provider.dart';
 import '../health/widgets/readiness_note.dart';
 import '../health/widgets/today_health_row.dart';
 import '../programs/application/program_providers.dart';
+import '../train/quick_workout.dart';
 import '../programs/domain/program_models.dart';
 import '../progress/domain/progress_overview.dart';
 import '../progress/workout_history_state.dart';
@@ -154,9 +155,16 @@ class _TodayPageState extends ConsumerState<TodayPage> {
               ref.invalidate(programWeekProvider);
             },
           )
+        : ref.watch(programsLoadFailedProvider)
+        ? NsHeroFrame(
+            eyebrow: 'YOUR PROGRAM',
+            title: 'Could not load your program',
+            subtitle: 'Your local workouts were not changed.',
+            actions: [NsHeroAction('Retry', () => invalidatePrograms(ref))],
+          )
         : _Hero(
             onOpen: (route) => context.push<void>(route),
-            onTrain: () => context.go('/train'),
+            onQuick: () => startQuickWorkout(context, ref),
           );
     final missed = week != null && unfinished == null && !active.hasError
         ? TodayMissedLine(
@@ -314,10 +322,10 @@ class _WeekCard extends StatelessWidget {
 
 /// Shown without an active program: pick one, or start a quick workout.
 class _Hero extends StatelessWidget {
-  const _Hero({required this.onOpen, required this.onTrain});
+  const _Hero({required this.onOpen, required this.onQuick});
 
   final void Function(String route) onOpen;
-  final VoidCallback onTrain;
+  final VoidCallback onQuick;
 
   @override
   Widget build(BuildContext context) {
@@ -329,7 +337,7 @@ class _Hero extends StatelessWidget {
           'workout and add exercises as you go.',
       actions: [
         NsHeroAction('Pick a program', () => onOpen('/train/programs')),
-        NsHeroAction('Go to Train', onTrain),
+        NsHeroAction('Quick workout', onQuick),
       ],
     );
   }

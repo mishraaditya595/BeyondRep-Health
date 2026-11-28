@@ -12,6 +12,9 @@ import 'package:beyondrep/features/account/account_auth_provider.dart';
 import 'package:beyondrep/features/health/application/health_overview.dart';
 import 'package:beyondrep/features/health/application/health_summary_controller.dart';
 import 'package:beyondrep/features/health/data/health_reader.dart';
+import 'package:beyondrep/features/programs/data/objectbox_program_repository.dart';
+import 'package:beyondrep/features/programs/domain/program_models.dart';
+import 'package:beyondrep/features/programs/domain/program_repository.dart';
 import 'package:beyondrep/features/progress/domain/workout_history_models.dart';
 import 'package:beyondrep/features/progress/workout_history_state.dart';
 import 'package:beyondrep/features/today/today_page.dart';
@@ -60,8 +63,30 @@ WorkoutSessionRecord _done(String id, DateTime atUtc, {String? plan}) =>
       planUuid: plan,
     );
 
+/// A program store with no programs; [fail] makes it unreadable.
+class _Programs implements ProgramRepository {
+  _Programs({this.fail = false});
+  final bool fail;
+
+  @override
+  List<TrainingProgramRecord> listPrograms() {
+    if (fail) throw StateError('store unavailable');
+    return const [];
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 class _FakeActions implements WorkoutActions {
   final started = <String>[];
+  final quick = <String>[];
+
+  @override
+  WorkoutSessionRecord startQuick(String name) {
+    quick.add(name);
+    return _done('quick', DateTime.utc(2026, 11, 24));
+  }
 
   @override
   WorkoutSessionRecord startPlan(String planUuid) {
@@ -90,6 +115,7 @@ void main() {
     Future<List<WorkoutSessionRecord>>? sessions,
     AsyncValue<ActiveWorkoutView?> unfinished = const AsyncData(null),
     bool settle = true,
+    bool programsFail = false,
     HealthOverview? health,
     List<Override> overrides = const [],
   }) async {
@@ -136,6 +162,9 @@ void main() {
           localNowProvider.overrideWithValue(_now),
           activeWorkoutProvider.overrideWithValue(unfinished),
           workoutActionsProvider.overrideWithValue(actions),
+          programRepositoryProvider.overrideWithValue(
+            _Programs(fail: programsFail),
+          ),
           trainLibraryProvider.overrideWith(
             (ref) async => WorkoutLibrarySnapshot(
               exercises: const [],
@@ -311,13 +340,31 @@ void main() {
     expect(pushed, ['/train/programs']);
   });
 
-  testWidgets('without a program the hero can go to Train', (tester) async {
+  testWidgets('without a program the hero starts a quick workout', (
+    tester,
+  ) async {
     await show(tester);
-    expect(find.text('Quick workout'), findsNothing);
-    await tester.tap(find.text('Go to Train'));
+    expect(find.text('Go to Train'), findsNothing);
+    await tester.tap(find.text('Quick workout'));
     await tester.pumpAndSettle();
-    expect(pushed, ['/train']);
-    expect(find.text('Train route'), findsOneWidget);
+    // The same name prompt Train uses.
+    expect(find.text('Start an empty workout'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'Synthetic quick');
+    await tester.tap(find.text('Start workout'));
+    await tester.pumpAndSettle();
+    expect(actions.quick, ['Synthetic quick']);
+    expect(pushed, ['/train/workout']);
+  });
+
+  testWidgets('a program list that cannot load is not "No program yet"', (
+    tester,
+  ) async {
+    await show(tester, programsFail: true);
+    expect(find.text('Could not load your program'), findsOneWidget);
+    expect(find.text('Your local workouts were not changed.'), findsOneWidget);
+    expect(find.text('No program yet'), findsNothing);
+    expect(find.text('Pick a program'), findsNothing);
+    expect(find.text('Retry'), findsOneWidget);
   });
 
   testWidgets('saved workouts outside a program never appear on Today', (

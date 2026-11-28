@@ -194,6 +194,7 @@ Future<FakeProgramActions> pumpTodayProgram(
         activeWorkoutProvider.overrideWithValue(const AsyncData(null)),
         workoutActionsProvider.overrideWithValue(actions),
         programWeekProvider.overrideWith((ref) => week),
+        programsLoadFailedProvider.overrideWithValue(false),
         trainLibraryProvider.overrideWith(
           (ref) async => const WorkoutLibrarySnapshot(exercises: [], plans: []),
         ),

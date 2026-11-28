@@ -4,21 +4,19 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/clock.dart';
 import '../../core/date_labels.dart';
-import '../../core/design/inputs.dart';
 import '../../core/design/layout.dart';
 import '../../core/design/dialogs.dart';
 import '../../core/design/beyondrep_theme.dart';
 import '../../core/design/page_header.dart';
 import '../../core/design/section.dart';
-import '../health/widgets/readiness_note.dart';
 import '../health/widgets/readiness_strip.dart';
 import '../programs/application/program_providers.dart';
 import '../programs/domain/program_status.dart';
 import '../programs/presentation/start_program_day.dart';
 import '../progress/domain/progress_overview.dart';
-import '../watch/widgets/live_watch_auto_open.dart';
 import '../watch/widgets/live_watch_workout_card.dart';
 import 'active_workout_state.dart';
+import 'quick_workout.dart';
 
 class TrainPage extends ConsumerWidget {
   const TrainPage({super.key});
@@ -26,77 +24,6 @@ class TrainPage extends ConsumerWidget {
   Future<void> _open(BuildContext context, WidgetRef ref, String route) async {
     await context.push<void>(route);
     invalidatePrograms(ref);
-  }
-
-  Future<void> _startQuick(BuildContext context, WidgetRef ref) async {
-    if (openLiveWatchWorkoutInstead(context, ref)) return;
-    var proposed = 'Quick workout';
-    final chosen = await showNsDialog<String>(
-      context: context,
-      builder: (dialogContext) => NsDialog(
-        title: 'Start an empty workout',
-        content: NsTextField(
-          autofocus: true,
-          initialValue: proposed,
-          onChanged: (value) => proposed = value,
-          maxLength: 160,
-          label: 'Workout name',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, proposed.trim()),
-            child: const Text('Start workout'),
-          ),
-        ],
-      ),
-    );
-    if (chosen == null || !context.mounted) return;
-    if (chosen.isEmpty) {
-      showNsMessage(context, 'Enter a workout name first.');
-      return;
-    }
-    await _start(
-      context,
-      ref,
-      () => ref.read(workoutActionsProvider).startQuick(chosen),
-    );
-  }
-
-  Future<void> _start(
-    BuildContext context,
-    WidgetRef ref,
-    void Function() action,
-  ) async {
-    if (openLiveWatchWorkoutInstead(context, ref)) return;
-    // The start would fail while a workout is unfinished or unrecoverable:
-    // say so before the readiness note, which only shows once a day.
-    final active = ref.read(activeWorkoutProvider);
-    if (active.value != null || active.hasError) {
-      _showStartFailed(context, ref);
-      return;
-    }
-    if (!await confirmReadinessBeforeStart(context, ref) || !context.mounted) {
-      return;
-    }
-    try {
-      action();
-      ref.invalidate(activeWorkoutProvider);
-      context.push('/train/workout');
-    } catch (_) {
-      _showStartFailed(context, ref);
-    }
-  }
-
-  void _showStartFailed(BuildContext context, WidgetRef ref) {
-    showNsMessage(
-      context,
-      'Could not start this workout. Check any unfinished workout.',
-    );
-    ref.invalidate(activeWorkoutProvider);
   }
 
   @override
@@ -288,7 +215,7 @@ class TrainPage extends ConsumerWidget {
       const SizedBox(height: 16),
       const ReadinessStrip(),
       FilledButton.icon(
-        onPressed: () => _startQuick(context, ref),
+        onPressed: () => startQuickWorkout(context, ref),
         style: _startButtonStyle,
         icon: const Icon(Icons.play_arrow),
         label: const Text('Quick workout'),
@@ -340,7 +267,7 @@ class TrainPage extends ConsumerWidget {
         const SizedBox(height: 4),
         Center(
           child: TextButton(
-            onPressed: () => _startQuick(context, ref),
+            onPressed: () => startQuickWorkout(context, ref),
             child: const Text('Quick workout'),
           ),
         ),

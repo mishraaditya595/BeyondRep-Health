@@ -166,11 +166,25 @@ final programWeekProvider = Provider.autoDispose<ProgramWeek?>((ref) {
   }
 });
 
+/// True when the program store cannot be read, or an active program exists
+/// but its week could not be worked out. Today shows an error then, never
+/// "No program yet".
+final programsLoadFailedProvider = Provider.autoDispose<bool>((ref) {
+  try {
+    final programs = ref.watch(programRepositoryProvider).listPrograms();
+    if (!programs.any((p) => p.isActive)) return false;
+    return ref.watch(programWeekProvider) == null;
+  } on Object {
+    return true;
+  }
+});
+
 /// Refresh every screen that shows programs or program plans.
 void invalidatePrograms(WidgetRef ref) {
   ref.invalidate(localProgramsProvider);
   ref.invalidate(localProgramProvider);
   ref.invalidate(activeProgramCardProvider);
   ref.invalidate(programWeekProvider);
+  ref.invalidate(programsLoadFailedProvider);
   ref.invalidate(trainLibraryProvider);
 }

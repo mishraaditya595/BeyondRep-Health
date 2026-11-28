@@ -198,6 +198,7 @@ void main() {
           localNowProvider.overrideWithValue(week?.localToday ?? _wednesday),
           activeWorkoutProvider.overrideWithValue(unfinished),
           workoutActionsProvider.overrideWithValue(actions),
+          programsLoadFailedProvider.overrideWithValue(false),
           programWeekProvider.overrideWith((ref) {
             onWeekBuilt?.call();
             return week;
