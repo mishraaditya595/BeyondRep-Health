@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/clock.dart';
 import '../../core/date_labels.dart';
+import '../../core/ids/uuid_factory.dart';
 import '../../core/design/dialogs.dart';
 import '../../core/design/inputs.dart';
 import '../../core/design/page_header.dart';
@@ -99,13 +100,15 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
     void setDay(String? planUuid) => _write(
       (repo) => repo.setDayPlan(program.uuid, entry.day.dayIndex, planUuid),
     );
-    // Adds the workout, then points the day at it. A failed second step only
-    // leaves an unused workout in the program.
-    void addAndSet(ProgramWorkoutSource source) {
-      String? added;
-      _write((repo) => added = repo.addWorkout(program.uuid, source));
-      if (added != null) setDay(added);
-    }
+    // One repository call creates the workout and sets the day.
+    void addAndSet(ProgramWorkoutSource source) => _write(
+      (repo) => repo.addWorkout(
+        program.uuid,
+        source,
+        dayIndex: entry.day.dayIndex,
+        requestUuid: SecureUuidFactory().newId(),
+      ),
+    );
 
     switch (choice) {
       case RestChoice():
@@ -116,11 +119,11 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
         await context.push<void>('/train/plans/$key/edit');
         if (mounted) invalidatePrograms(ref);
       case NewWorkoutChoice():
-        final created = await context.push<String>(
-          '/train/programs/${program.uuid}/workouts/new',
+        await context.push<String>(
+          '/train/programs/${program.uuid}/workouts/new'
+          '?day=${entry.day.dayIndex}',
         );
         if (mounted) invalidatePrograms(ref);
-        if (created != null && mounted) setDay(created);
       case TemplateChoice(:final template):
         final snapshot = safeCatalogState(() => ref.read(catalogStateProvider))
             .snapshot;

@@ -243,17 +243,17 @@ void main() {
       expect(programs.getProgram('a')!.days[4].planUuid, isNull);
     });
 
-    test('programPlans lists the program plans even when no day uses them', () {
+    test('programPlans lists only workouts a day uses', () {
       final p = import('a');
       final planB = p.days[1].planUuid!;
       programs.setDayPlan('a', 1, null);
+      // A workout no day uses is archived, so it is no longer listed.
       final plans = programs.programPlans('a');
-      expect(plans.map((e) => e.name), ['Day A', 'Day B']);
-      expect(plans.map((e) => e.uuid), contains(planB));
-      programs.setDayPlan('a', 1, planB);
-      expect(programs.getProgram('a')!.days[1].planUuid, planB);
+      expect(plans.map((e) => e.name), ['Day A']);
+      expect(plans.map((e) => e.uuid), isNot(contains(planB)));
+      expect(() => programs.setDayPlan('a', 1, planB), throwsArgumentError);
       import('b');
-      expect(programs.programPlans('a'), hasLength(2));
+      expect(programs.programPlans('a'), hasLength(1));
       programs.archiveProgram('a', 5);
       expect(programs.programPlans('a'), isEmpty);
     });
@@ -550,29 +550,120 @@ void main() {
       expect(programs.listPrograms(), isEmpty);
     });
 
-    test('addWorkout returns a plan setDayPlan accepts', () {
+    test('addWorkout creates the workout and sets the day in one step', () {
       final p = create('c-1');
-      final planUuid = programs.addWorkout(p.uuid, draft('Legs'));
-      programs.setDayPlan(p.uuid, 5, planUuid);
+      final planUuid = programs.addWorkout(
+        p.uuid,
+        draft('Legs'),
+        dayIndex: 5,
+        requestUuid: 'add-1',
+      );
+      expect(planUuid, 'add-1');
       expect(programs.getProgram(p.uuid)!.days[5].planUuid, planUuid);
       expect(programs.programPlans(p.uuid), hasLength(3));
     });
 
-    test('addWorkout refuses the 31st workout', () {
+    test('repeating the same requestUuid changes nothing', () {
+      final p = create('c-1');
+      final first = programs.addWorkout(
+        p.uuid,
+        draft('Legs'),
+        dayIndex: 5,
+        requestUuid: 'add-1',
+      );
+      // The user moves on: the day now holds something else.
+      final other = programs.addWorkout(
+        p.uuid,
+        draft('Core'),
+        dayIndex: 5,
+        requestUuid: 'add-2',
+      );
+      final again = programs.addWorkout(
+        p.uuid,
+        draft('Legs'),
+        dayIndex: 5,
+        requestUuid: 'add-1',
+      );
+      expect(again, first);
+      expect(programs.getProgram(p.uuid)!.days[5].planUuid, other);
+      expect([
+        for (final w in programs.programPlans(p.uuid)) w.name,
+      ], isNot(contains('Legs')));
+    });
+
+    test('replacing the only use of a workout archives it', () {
+      final p = create('c-1');
+      final pushUuid = p.days[0].planUuid!;
+      final added = programs.addWorkout(
+        p.uuid,
+        draft('Legs'),
+        dayIndex: 2,
+        requestUuid: 'add-1',
+      );
+      // Push is used on days 0 and 4, so replacing day 0 keeps it live.
+      expect([
+        for (final w in programs.programPlans(p.uuid)) w.uuid,
+      ], contains(pushUuid));
+      programs.addWorkout(
+        p.uuid,
+        draft('Core'),
+        dayIndex: 0,
+        requestUuid: 'add-2',
+      );
+      expect(
+        [for (final w in programs.programPlans(p.uuid)) w.uuid],
+        contains(pushUuid),
+        reason: 'still used on day 4',
+      );
+      programs.setDayPlan(p.uuid, 4, null);
+      final live = [for (final w in programs.programPlans(p.uuid)) w.uuid];
+      expect(live, isNot(contains(pushUuid)));
+      expect(live, contains(added));
+      final row = store.box<WorkoutPlanEntity>().getAll().firstWhere(
+        (e) => e.uuid == pushUuid,
+      );
+      expect(row.archivedAtMs, isNotNull, reason: 'archived, not deleted');
+    });
+
+    test('setDayPlan to another workout archives an unused old one', () {
+      final p = create('c-1');
+      final pullUuid = p.days[2].planUuid!;
+      programs.setDayPlan(p.uuid, 2, p.days[0].planUuid);
+      expect([
+        for (final w in programs.programPlans(p.uuid)) w.uuid,
+      ], isNot(contains(pullUuid)));
+    });
+
+    test('limit counts only live workouts', () {
       final p = create(
         'c-1',
         workouts: [for (var i = 0; i < 7; i++) draft('W$i')],
         weekIndexes: [for (var i = 0; i < 7; i++) i],
       );
-      for (var i = 7; i < 30; i++) {
-        programs.addWorkout(p.uuid, draft('W$i'));
+      for (var i = 0; i < 40; i++) {
+        programs.addWorkout(
+          p.uuid,
+          draft('N$i'),
+          dayIndex: 0,
+          requestUuid: 'n-$i',
+        );
       }
-      expect(programs.programPlans(p.uuid), hasLength(30));
+      expect(programs.programPlans(p.uuid), hasLength(7));
+    });
+
+    test('a failed add leaves the day and the workouts as they were', () {
+      final p = create('c-1');
       expect(
-        () => programs.addWorkout(p.uuid, draft('One too many')),
-        throwsA(isA<ProgramWorkoutLimit>()),
+        () => programs.addWorkout(
+          p.uuid,
+          DraftWorkoutSource(name: '', description: '', rows: const []),
+          dayIndex: 1,
+          requestUuid: 'bad',
+        ),
+        throwsArgumentError,
       );
-      expect(programs.programPlans(p.uuid), hasLength(30));
+      expect(programs.getProgram(p.uuid)!.days[1].planUuid, isNull);
+      expect(programs.programPlans(p.uuid), hasLength(2));
     });
 
     test('createProgram with 31 workouts throws ProgramWorkoutLimit', () {

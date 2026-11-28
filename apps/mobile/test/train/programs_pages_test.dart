@@ -749,7 +749,7 @@ void main() {
       expect(find.text('Thursday · Synthetic pull'), findsOneWidget);
     });
 
-    testWidgets('a single-use day set to Rest can be pointed back', (
+    testWidgets('a workout set to Rest on its only day is no longer offered', (
       tester,
     ) async {
       final uuid = seed('prog.three');
@@ -762,9 +762,8 @@ void main() {
       expect(find.text('Friday · Rest'), findsOneWidget);
       await tester.tap(find.text('Friday · Rest'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Synthetic pull'));
-      await tester.pumpAndSettle();
-      expect(find.text('Friday · Synthetic pull'), findsOneWidget);
+      expect(find.text('Rest day'), findsOneWidget);
+      expect(find.text('Synthetic pull'), findsNothing);
     });
 
     group('adding workouts and renaming', () {
@@ -807,7 +806,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('New workout'));
         await tester.pumpAndSettle();
-        expect(visited.single, startsWith('new-workout $uuid'));
+        expect(visited.single, 'new-workout $uuid day=1');
         await tester.tap(find.text('Add stub workout'));
         await tester.pumpAndSettle();
         expect(find.text('Thursday · Stub workout'), findsOneWidget);
@@ -872,18 +871,18 @@ void main() {
       ) async {
         final uuid = seed('prog.three');
         final repo = ObjectBoxProgramRepository(store);
-        final snapshot = programsSnapshot();
-        final template = snapshot.templates.firstWhere(
-          (t) => t.id == 'tpl.push',
-        );
+        // The repository never lets unused workouts pile up, so the limit
+        // is reached by writing rows directly.
+        var n = 0;
         while (repo.programPlans(uuid).length < maxProgramWorkouts) {
-          repo.addWorkout(
-            uuid,
-            TemplateWorkoutSource(
+          store.box<WorkoutPlanEntity>().put(
+            WorkoutPlanEntity(
+              uuid: 'filler-${n++}',
               name: 'Filler',
               description: '',
-              rows: templateRowInputs(template, snapshot),
-              release: 4,
+              createdAtMs: 0,
+              updatedAtMs: 0,
+              programUuid: uuid,
             ),
           );
         }

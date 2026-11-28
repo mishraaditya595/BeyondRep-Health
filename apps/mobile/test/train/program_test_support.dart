@@ -152,8 +152,12 @@ Future<List<String>> pumpPrograms(
       GoRoute(
         path: '/train/programs/:uuid/workouts/new',
         builder: (_, s) {
-          visited.add('new-workout ${s.pathParameters['uuid']}');
-          return _AddWorkoutStub(programUuid: s.pathParameters['uuid']!);
+          final day = int.parse(s.uri.queryParameters['day']!);
+          visited.add('new-workout ${s.pathParameters['uuid']} day=$day');
+          return _AddWorkoutStub(
+            programUuid: s.pathParameters['uuid']!,
+            dayIndex: day,
+          );
         },
       ),
       GoRoute(
@@ -200,9 +204,10 @@ Future<List<String>> pumpPrograms(
 /// Stands in for the workout editor in program mode: adds one workout to the
 /// program and pops its UUID, like the real editor does.
 class _AddWorkoutStub extends ConsumerWidget {
-  const _AddWorkoutStub({required this.programUuid});
+  const _AddWorkoutStub({required this.programUuid, required this.dayIndex});
 
   final String programUuid;
+  final int dayIndex;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -224,6 +229,8 @@ class _AddWorkoutStub extends ConsumerWidget {
                     rows: templateRowInputs(template, snapshot),
                     release: 4,
                   ),
+                  dayIndex: dayIndex,
+                  requestUuid: 'stub-workout',
                 );
             context.pop(created);
           },

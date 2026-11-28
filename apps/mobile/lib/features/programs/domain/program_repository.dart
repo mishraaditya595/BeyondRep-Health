@@ -46,9 +46,17 @@ abstract interface class ProgramRepository {
     required String description,
   });
 
-  /// Adds one program-owned workout and returns its plan UUID. Throws
-  /// [ProgramWorkoutLimit] when the program already owns 30 live workouts.
-  String addWorkout(String programUuid, ProgramWorkoutSource source);
+  /// In one transaction creates a program-owned workout (its plan UUID is
+  /// [requestUuid]) and makes it the workout of [dayIndex], replacing the
+  /// day's previous workout, which is archived when no other day uses it.
+  /// Repeating a [requestUuid] returns the existing workout and changes
+  /// nothing. Throws [ProgramWorkoutLimit] at 30 live workouts.
+  String addWorkout(
+    String programUuid,
+    ProgramWorkoutSource source, {
+    required int dayIndex,
+    required String requestUuid,
+  });
 
   /// Activating deactivates every other program in the same transaction.
   void setActive(String programUuid, bool active, DateTime localToday);
@@ -56,7 +64,8 @@ abstract interface class ProgramRepository {
   void setFirstWeekday(String programUuid, int weekday);
 
   /// A null [planUuid] makes the day a rest day. The plan must belong to the
-  /// program, otherwise [ArgumentError].
+  /// program, otherwise [ArgumentError]. A workout no day uses any more is
+  /// archived in the same transaction.
   void setDayPlan(String programUuid, int dayIndex, String? planUuid);
 
   /// The program's non-archived plans (the ones [setDayPlan] accepts), in

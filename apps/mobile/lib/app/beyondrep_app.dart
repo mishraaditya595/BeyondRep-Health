@@ -144,8 +144,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/train/programs/:uuid/workouts/new',
-            builder: (_, state) =>
-                PlanEditorPage(programUuid: state.pathParameters['uuid']),
+            builder: (_, state) => PlanEditorPage(
+              programUuid: state.pathParameters['uuid'],
+              programDay: int.tryParse(state.uri.queryParameters['day'] ?? ''),
+            ),
           ),
           GoRoute(
             path: '/train/plans/:id/edit',

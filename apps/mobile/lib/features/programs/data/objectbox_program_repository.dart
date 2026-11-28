@@ -480,22 +480,57 @@ class ObjectBoxProgramRepository implements ProgramRepository {
   }
 
   @override
-  String addWorkout(String programUuid, ProgramWorkoutSource source) {
+  String addWorkout(
+    String programUuid,
+    ProgramWorkoutSource source, {
+    required int dayIndex,
+    required String requestUuid,
+  }) {
+    if (dayIndex < 0 || dayIndex > 6) throw ArgumentError('Invalid day');
     return _store.runInTransaction(TxMode.write, () {
       final program = _live(programUuid);
+      // A repeated request returns the workout it already made.
+      if (_plansOf(programUuid).any((p) => p.uuid == requestUuid)) {
+        return requestUuid;
+      }
       final live = _plansOf(programUuid).where((p) => p.archivedAtMs == null);
       if (live.length >= maxProgramWorkouts) {
         throw const ProgramWorkoutLimit();
       }
       final resolved = _resolve(source);
       final now = _now();
-      final planUuid = _ids.newId();
-      _putPlan(planUuid, programUuid, resolved.name, resolved.description, now);
-      _putItems(planUuid, resolved.items);
+      _putPlan(
+        requestUuid,
+        programUuid,
+        resolved.name,
+        resolved.description,
+        now,
+      );
+      _putItems(requestUuid, resolved.items);
+      _assignDay(programUuid, dayIndex, requestUuid, now);
       program.updatedAtMs = now;
       _programs.put(program);
-      return planUuid;
+      return requestUuid;
     });
+  }
+
+  /// Points a day at [planUuid] and archives the workout it used before when
+  /// no other day uses it. Runs inside a write transaction.
+  void _assignDay(String programUuid, int dayIndex, String? planUuid, int now) {
+    final days = _daysOf(programUuid);
+    final day = days.firstWhere((d) => d.dayIndex == dayIndex);
+    final old = day.planUuid;
+    day.planUuid = planUuid;
+    _days.put(day);
+    if (old == null || old == planUuid) return;
+    if (days.any((d) => d.dayIndex != dayIndex && d.planUuid == old)) return;
+    for (final plan in _plansOf(programUuid)) {
+      if (plan.uuid == old && plan.archivedAtMs == null) {
+        plan.archivedAtMs = now;
+        plan.updatedAtMs = now;
+        _plans.put(plan);
+      }
+    }
   }
 
   /// At most 1000 characters, never splitting a surrogate pair.
@@ -556,11 +591,9 @@ class ObjectBoxProgramRepository implements ProgramRepository {
           ).any((plan) => plan.uuid == planUuid && plan.archivedAtMs == null)) {
         throw ArgumentError('Plan does not belong to this program');
       }
-      final day = _daysOf(programUuid)
-          .firstWhere((d) => d.dayIndex == dayIndex);
-      day.planUuid = planUuid;
-      _days.put(day);
-      program.updatedAtMs = _now();
+      final now = _now();
+      _assignDay(programUuid, dayIndex, planUuid, now);
+      program.updatedAtMs = now;
       _programs.put(program);
     });
   }

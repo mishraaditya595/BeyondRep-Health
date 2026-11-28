@@ -21,6 +21,7 @@ class PlanEditorPage extends ConsumerStatefulWidget {
   const PlanEditorPage({
     this.planUuid,
     this.programUuid,
+    this.programDay,
     this.returnDraft = false,
     this.initialDraft,
     super.key,
@@ -31,6 +32,9 @@ class PlanEditorPage extends ConsumerStatefulWidget {
 
   /// A new workout added to this program; pops with the new plan UUID.
   final String? programUuid;
+
+  /// The day (0-6) a new program workout is set on.
+  final int? programDay;
 
   /// Nothing is saved; pops with a [DraftWorkoutSource].
   final bool returnDraft;
@@ -394,6 +398,8 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
                 description: description.text,
                 rows: List.unmodifiable(items),
               ),
+              dayIndex: widget.programDay ?? 0,
+              requestUuid: planUuid,
             );
         invalidatePrograms(ref);
         if (mounted) {

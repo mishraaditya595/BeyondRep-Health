@@ -133,14 +133,19 @@ class FakeLibrary implements WorkoutLibraryRepository {
 }
 
 class _FakePrograms implements ProgramRepository {
-  final added = <(String, ProgramWorkoutSource)>[];
+  final added = <(String, ProgramWorkoutSource, int, String)>[];
   bool full = false;
 
   @override
-  String addWorkout(String programUuid, ProgramWorkoutSource source) {
+  String addWorkout(
+    String programUuid,
+    ProgramWorkoutSource source, {
+    required int dayIndex,
+    required String requestUuid,
+  }) {
     if (full) throw const ProgramWorkoutLimit();
-    added.add((programUuid, source));
-    return 'new-plan-uuid';
+    added.add((programUuid, source, dayIndex, requestUuid));
+    return requestUuid;
   }
 
   @override
@@ -243,11 +248,12 @@ void main() {
         tester,
         fake: fake,
         programs: programs,
-        editor: const PlanEditorPage(programUuid: 'prog-1'),
+        editor: const PlanEditorPage(programUuid: 'prog-1', programDay: 4),
       );
       expect(find.text('New workout'), findsOneWidget);
       await fillAndSave(tester, name: 'Push day');
-      expect(results, ['new-plan-uuid']);
+      expect(results, [programs.added.single.$4]);
+      expect(programs.added.single.$3, 4);
       expect(programs.added.single.$1, 'prog-1');
       final source = programs.added.single.$2 as DraftWorkoutSource;
       expect(source.name, 'Push day');
