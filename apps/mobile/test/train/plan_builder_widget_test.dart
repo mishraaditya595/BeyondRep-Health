@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:beyondrep/core/clock.dart';
 import 'package:beyondrep/core/design/beyondrep_theme.dart';
+import 'package:beyondrep/features/programs/data/objectbox_program_repository.dart';
+import 'package:beyondrep/features/programs/domain/program_models.dart';
+import 'package:beyondrep/features/programs/domain/program_repository.dart';
 import 'package:beyondrep/features/train/plan_editor_page.dart';
 import 'package:beyondrep/features/train/train_page.dart';
 import 'package:beyondrep/features/train/active_workout_state.dart';
@@ -139,7 +142,207 @@ class FakeLibrary implements WorkoutLibraryRepository {
   }
 }
 
+class _FakePrograms implements ProgramRepository {
+  final added = <(String, ProgramWorkoutSource)>[];
+  bool full = false;
+
+  @override
+  String addWorkout(String programUuid, ProgramWorkoutSource source) {
+    if (full) throw const ProgramWorkoutLimit();
+    added.add((programUuid, source));
+    return 'new-plan-uuid';
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Opens [editor] from a home page and records what it pops.
+Future<List<Object?>> pumpEditor(
+  WidgetTester tester, {
+  required FakeLibrary fake,
+  required PlanEditorPage editor,
+  ProgramRepository? programs,
+}) async {
+  final results = <Object?>[];
+  final router = GoRouter(
+    initialLocation: '/',
+    routes: [
+      GoRoute(
+        path: '/',
+        builder: (context, _) => Scaffold(
+          body: Center(
+            child: TextButton(
+              onPressed: () async =>
+                  results.add(await context.push<Object?>('/editor')),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+      GoRoute(path: '/editor', builder: (_, _) => editor),
+    ],
+  );
+  addTearDown(router.dispose);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        ...catalogTestOverrides(),
+        workoutLibraryRepositoryProvider.overrideWithValue(fake),
+        if (programs != null)
+          programRepositoryProvider.overrideWithValue(programs),
+        activeWorkoutProvider.overrideWith(
+          (ref) => const AsyncData<ActiveWorkoutView?>(null),
+        ),
+      ],
+      child: MaterialApp.router(
+        theme: BeyondRepTheme.build(Brightness.light),
+        routerConfig: router,
+      ),
+    ),
+  );
+  await tester.tap(find.text('open'));
+  await tester.pumpAndSettle();
+  return results;
+}
+
+Future<void> fillAndSave(WidgetTester tester, {String? name}) async {
+  if (name != null) await tester.enterText(find.byType(TextField).first, name);
+  await tester.tap(find.text('Add'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Barbell bench press').last);
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(find.text('Save workout'));
+  await tester.pumpAndSettle();
+  await tester.drag(find.byType(ListView).last, const Offset(0, -160));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Save workout'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  group('editor modes', () {
+    testWidgets('program mode saves through addWorkout and pops the UUID', (
+      tester,
+    ) async {
+      final fake = FakeLibrary();
+      final programs = _FakePrograms();
+      final results = await pumpEditor(
+        tester,
+        fake: fake,
+        programs: programs,
+        editor: const PlanEditorPage(programUuid: 'prog-1'),
+      );
+      expect(find.text('New workout'), findsOneWidget);
+      await fillAndSave(tester, name: 'Push day');
+      expect(results, ['new-plan-uuid']);
+      expect(programs.added.single.$1, 'prog-1');
+      final source = programs.added.single.$2 as DraftWorkoutSource;
+      expect(source.name, 'Push day');
+      expect(source.rows.single.exerciseUuid, 'builtin.v1.bench-press');
+      expect(fake.planRecords, isEmpty);
+    });
+
+    testWidgets('draft mode pops a DraftWorkoutSource and writes nothing', (
+      tester,
+    ) async {
+      final fake = FakeLibrary();
+      final programs = _FakePrograms();
+      final results = await pumpEditor(
+        tester,
+        fake: fake,
+        programs: programs,
+        editor: const PlanEditorPage(returnDraft: true),
+      );
+      await fillAndSave(tester, name: ' Pull day ');
+      final draft = results.single as DraftWorkoutSource;
+      expect(draft.name, 'Pull day');
+      expect(draft.rows.single.exerciseUuid, 'builtin.v1.bench-press');
+      expect(fake.planRecords, isEmpty);
+      expect(programs.added, isEmpty);
+    });
+
+    testWidgets('draft mode prefills initialDraft', (tester) async {
+      await pumpEditor(
+        tester,
+        fake: FakeLibrary(),
+        editor: const PlanEditorPage(
+          returnDraft: true,
+          initialDraft: DraftWorkoutSource(
+            name: 'Legs',
+            description: 'Heavy.',
+            rows: [
+              PlanExerciseRecord(
+                uuid: 'r1',
+                exerciseUuid: 'builtin.v1.bench-press',
+                position: 0,
+                targetSets: 4,
+                targetRepsMin: 5,
+                targetRepsMax: 5,
+              ),
+            ],
+          ),
+        ),
+      );
+      expect(find.text('Legs'), findsOneWidget);
+      expect(find.text('Heavy.'), findsOneWidget);
+      expect(find.textContaining('4 sets'), findsOneWidget);
+      expect(find.text('Edit workout'), findsOneWidget);
+    });
+
+    testWidgets('program mode at 30 workouts shows the limit message', (
+      tester,
+    ) async {
+      final programs = _FakePrograms()..full = true;
+      final results = await pumpEditor(
+        tester,
+        fake: FakeLibrary(),
+        programs: programs,
+        editor: const PlanEditorPage(programUuid: 'prog-1'),
+      );
+      await fillAndSave(tester, name: 'One too many');
+      expect(
+        find.text('A program can hold up to 30 workouts.'),
+        findsOneWidget,
+      );
+      expect(results, isEmpty);
+    });
+
+    testWidgets('an empty name in draft mode shows the workout error', (
+      tester,
+    ) async {
+      final results = await pumpEditor(
+        tester,
+        fake: FakeLibrary(),
+        editor: const PlanEditorPage(returnDraft: true),
+      );
+      await fillAndSave(tester);
+      expect(
+        find.text('Enter a workout name and valid exercise targets.'),
+        findsOneWidget,
+      );
+      expect(results, isEmpty);
+    });
+
+    testWidgets('discarding says the workout has not been saved', (
+      tester,
+    ) async {
+      await pumpEditor(
+        tester,
+        fake: FakeLibrary(),
+        editor: const PlanEditorPage(returnDraft: true),
+      );
+      await tester.enterText(find.byType(TextField).first, 'x');
+      await tester.pump();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Changes to this workout have not been saved.'),
+        findsOneWidget,
+      );
+    });
+  });
+
   testWidgets('Train shows the real date and week, not demo dates', (
     tester,
   ) async {
@@ -217,7 +420,7 @@ void main() {
 
     await tester.tap(find.text('Create training plan'));
     await tester.pumpAndSettle();
-    expect(find.text('PLAN THE WORK'), findsOneWidget);
+    expect(find.text('BUILD THE WORKOUT'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField).first, 'Push day');
     await tester.tap(find.text('Add'));
@@ -226,13 +429,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('3 sets'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('Save plan offline'));
+    await tester.ensureVisible(find.text('Save workout'));
     await tester.pumpAndSettle();
     // ensureVisible can align to the exact bottom edge of the test viewport.
     // Move the list farther so the simulated tap hits the button.
     await tester.drag(find.byType(ListView).last, const Offset(0, -160));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Save plan offline'));
+    await tester.tap(find.text('Save workout'));
     await tester.pumpAndSettle();
 
     expect(fake.planRecords.values.single.name, 'Push day');
@@ -291,11 +494,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('up to 12 reps'), findsOneWidget);
     await tester.enterText(find.byType(TextField).first, 'Upper B');
-    await tester.ensureVisible(find.text('Save plan offline'));
+    await tester.ensureVisible(find.text('Save workout'));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(ListView).last, const Offset(0, -120));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Save plan offline'));
+    await tester.tap(find.text('Save workout'));
     await tester.pumpAndSettle();
     expect(fake.planRecords['existing']!.name, 'Upper B');
     expect(fake.planRecords['existing']!.exercises.single.uuid, 'item-a');
@@ -348,32 +551,30 @@ void main() {
         exercises: [],
       );
       await tester.enterText(find.byType(TextField).first, 'Stale edit');
-      await tester.ensureVisible(find.text('Save plan offline'));
+      await tester.ensureVisible(find.text('Save workout'));
       await tester.pumpAndSettle();
       await tester.drag(find.byType(ListView).last, const Offset(0, -150));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save plan offline'));
+      await tester.tap(find.text('Save workout'));
       await tester.pumpAndSettle();
-      expect(find.text('Reload latest plan'), findsOneWidget);
+      expect(find.text('Reload latest workout'), findsOneWidget);
       expect(fake.planRecords['existing']!.name, 'Newer version');
-      await tester.tap(find.text('Reload latest plan'));
+      await tester.tap(find.text('Reload latest workout'));
       await tester.pumpAndSettle();
       expect(find.text('Discard unsaved changes?'), findsOneWidget);
       await tester.tap(find.text('Keep editing'));
       await tester.pumpAndSettle();
-      expect(find.text('Reload latest plan'), findsOneWidget);
-      await tester.tap(find.text('Reload latest plan'));
+      expect(find.text('Reload latest workout'), findsOneWidget);
+      await tester.tap(find.text('Reload latest workout'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Discard changes'));
       await tester.pumpAndSettle();
       expect(find.text('Newer version'), findsOneWidget);
-      expect(find.text('Reload latest plan'), findsNothing);
+      expect(find.text('Reload latest workout'), findsNothing);
     },
   );
 
-  testWidgets('stale archiving is rejected; current archiving is allowed', (
-    tester,
-  ) async {
+  testWidgets('the editor never offers to archive a workout', (tester) async {
     final fake = FakeLibrary();
     fake.planRecords['existing'] = const WorkoutPlanRecord(
       uuid: 'existing',
@@ -382,54 +583,15 @@ void main() {
       updatedAtMs: 4,
       exercises: [],
     );
-    final router = GoRouter(
-      initialLocation: '/train/plans/existing/edit',
-      routes: [
-        GoRoute(path: '/train', builder: (_, _) => const TrainPage()),
-        GoRoute(
-          path: '/train/plans/:id/edit',
-          builder: (_, _) => const PlanEditorPage(planUuid: 'existing'),
-        ),
-      ],
+    await pumpEditor(
+      tester,
+      fake: fake,
+      editor: const PlanEditorPage(planUuid: 'existing'),
     );
-    addTearDown(router.dispose);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          ...catalogTestOverrides(),
-          workoutLibraryRepositoryProvider.overrideWithValue(fake),
-          activeWorkoutProvider.overrideWith(
-            (ref) => const AsyncData<ActiveWorkoutView?>(null),
-          ),
-        ],
-        child: MaterialApp.router(
-          theme: BeyondRepTheme.build(Brightness.light),
-          routerConfig: router,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    fake.planRecords['existing'] = const WorkoutPlanRecord(
-      uuid: 'existing',
-      name: 'Updated externally',
-      description: '',
-      updatedAtMs: 5,
-      exercises: [],
-    );
-    await tester.tap(find.byTooltip('Archive plan'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Archive'));
-    await tester.pumpAndSettle();
-    expect(fake.archiveCalls, 0);
-    expect(find.text('Reload latest plan'), findsOneWidget);
-    await tester.tap(find.text('Reload latest plan'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Archive plan'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Archive'));
-    await tester.pumpAndSettle();
-    expect(fake.archiveCalls, 1);
-    expect(fake.planRecords, isEmpty);
+    expect(find.text('Edit workout'), findsOneWidget);
+    expect(find.byIcon(Icons.archive_outlined), findsNothing);
+    expect(find.byTooltip('Archive plan'), findsNothing);
+    expect(find.byTooltip('Archive workout'), findsNothing);
   });
 
   testWidgets('unsaved back navigation requires explicit confirmation', (
@@ -471,7 +633,7 @@ void main() {
     expect(find.text('Discard unsaved changes?'), findsOneWidget);
     await tester.tap(find.text('Keep editing'));
     await tester.pumpAndSettle();
-    expect(find.text('PLAN THE WORK'), findsOneWidget);
+    expect(find.text('BUILD THE WORKOUT'), findsOneWidget);
     await tester.pageBack();
     await tester.pumpAndSettle();
     await tester.tap(find.text('Discard changes'));
@@ -516,11 +678,11 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.text('This plan was archived or is unavailable.'),
+      find.text('This workout was archived or is unavailable.'),
       findsOneWidget,
     );
     final save = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Save plan offline'),
+      find.widgetWithText(FilledButton, 'Save workout'),
     );
     expect(save.onPressed, isNull);
     expect(fake.planRecords, isEmpty);
@@ -568,7 +730,7 @@ void main() {
     expect(
       tester
           .widget<FilledButton>(
-            find.widgetWithText(FilledButton, 'Save plan offline'),
+            find.widgetWithText(FilledButton, 'Save workout'),
           )
           .onPressed,
       isNull,
@@ -685,7 +847,7 @@ void main() {
     expect(find.text('Discard unsaved changes?'), findsOneWidget);
     await tester.tap(find.text('Keep editing'));
     await tester.pumpAndSettle();
-    expect(find.text('PLAN THE WORK'), findsOneWidget);
+    expect(find.text('BUILD THE WORKOUT'), findsOneWidget);
     expect(fake.planRecords, isEmpty);
   });
 
@@ -721,11 +883,11 @@ void main() {
     await tester.tap(find.text('Create training plan'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'Upper A');
-    await tester.ensureVisible(find.text('Save plan offline'));
+    await tester.ensureVisible(find.text('Save workout'));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(ListView).last, const Offset(0, -150));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Save plan offline'));
+    await tester.tap(find.text('Save workout'));
     await tester.pumpAndSettle();
     expect(find.textContaining('archived'), findsWidgets);
     expect(fake.planRecords, isEmpty);
@@ -857,11 +1019,11 @@ void main() {
       await tester.tap(find.text('Apply'));
       await tester.pumpAndSettle();
       expect(find.textContaining('3 sets · 45 s'), findsOneWidget);
-      await tester.ensureVisible(find.text('Save plan offline'));
+      await tester.ensureVisible(find.text('Save workout'));
       await tester.pumpAndSettle();
       await tester.drag(find.byType(ListView).last, const Offset(0, -160));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save plan offline'));
+      await tester.tap(find.text('Save workout'));
       await tester.pumpAndSettle();
       final row = fake.planRecords['existing']!.exercises.first;
       expect(row.targetDurationSeconds, 45);
@@ -912,11 +1074,11 @@ void main() {
       expect(find.textContaining('reps'), findsOneWidget); // the bench row
       expect(find.textContaining('3 sets · 30 s'), findsOneWidget);
       await tester.enterText(find.byType(TextField).first, 'Core B');
-      await tester.ensureVisible(find.text('Save plan offline'));
+      await tester.ensureVisible(find.text('Save workout'));
       await tester.pumpAndSettle();
       await tester.drag(find.byType(ListView).last, const Offset(0, -160));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save plan offline'));
+      await tester.tap(find.text('Save workout'));
       await tester.pumpAndSettle();
       final saved = fake.planRecords['existing']!;
       expect(saved.name, 'Core B');
@@ -946,11 +1108,11 @@ void main() {
       await tester.tap(find.text('Plank').last);
       await tester.pumpAndSettle();
       expect(find.textContaining('3 sets · 30 s'), findsOneWidget);
-      await tester.ensureVisible(find.text('Save plan offline'));
+      await tester.ensureVisible(find.text('Save workout'));
       await tester.pumpAndSettle();
       await tester.drag(find.byType(ListView).last, const Offset(0, -160));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save plan offline'));
+      await tester.tap(find.text('Save workout'));
       await tester.pumpAndSettle();
       final added = fake.planRecords['existing']!.exercises.last;
       expect(added.exerciseUuid, 'builtin.v1.plank');

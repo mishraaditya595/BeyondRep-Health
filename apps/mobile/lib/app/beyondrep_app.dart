@@ -130,8 +130,9 @@ final routerProvider = Provider<GoRouter>((ref) {
                 ExerciseDetailPage(exerciseId: state.pathParameters['id']!),
           ),
           GoRoute(
-            path: '/train/plans/new',
-            builder: (_, _) => const PlanEditorPage(),
+            path: '/train/programs/:uuid/workouts/new',
+            builder: (_, state) =>
+                PlanEditorPage(programUuid: state.pathParameters['uuid']),
           ),
           GoRoute(
             path: '/train/plans/:id/edit',

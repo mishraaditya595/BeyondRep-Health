@@ -8,6 +8,9 @@ import '../../core/design/beyondrep_theme.dart';
 import '../../core/design/page_header.dart';
 import '../../core/ids/uuid_factory.dart';
 import '../../core/ui/dispose_after_dialog.dart';
+import '../programs/application/program_providers.dart';
+import '../programs/data/objectbox_program_repository.dart';
+import '../programs/domain/program_models.dart';
 import '../workouts/data/objectbox_workout_library_repository.dart';
 import '../workouts/domain/durations.dart';
 import '../workouts/domain/workout_library_models.dart';
@@ -15,9 +18,25 @@ import 'exercise_picker_sheet.dart';
 import 'train_library_state.dart';
 
 class PlanEditorPage extends ConsumerStatefulWidget {
-  const PlanEditorPage({this.planUuid, super.key});
+  const PlanEditorPage({
+    this.planUuid,
+    this.programUuid,
+    this.returnDraft = false,
+    this.initialDraft,
+    super.key,
+  });
 
+  /// Edit an existing workout.
   final String? planUuid;
+
+  /// A new workout added to this program; pops with the new plan UUID.
+  final String? programUuid;
+
+  /// Nothing is saved; pops with a [DraftWorkoutSource].
+  final bool returnDraft;
+
+  /// Prefill for [returnDraft].
+  final DraftWorkoutSource? initialDraft;
 
   @override
   ConsumerState<PlanEditorPage> createState() => _PlanEditorPageState();
@@ -36,7 +55,6 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
   bool _dirty = false;
   bool _allowLeave = false;
   bool _editConflict = false;
-  bool _programPlan = false;
 
   // onChanged is a text change, unlike a TextEditingController listener
   // which also fires on caret movement, focus and selection changes.
@@ -49,7 +67,7 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
     return showNsConfirm(
       context,
       title: 'Discard unsaved changes?',
-      message: 'Changes to this plan have not been saved.',
+      message: 'Changes to this workout have not been saved.',
       cancelLabel: 'Keep editing',
       confirmLabel: 'Discard changes',
     );
@@ -79,7 +97,7 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
         setState(() {
           _unavailable = true;
           _editConflict = false;
-          pageError = 'This plan was archived or is unavailable.';
+          pageError = 'This workout was archived or is unavailable.';
         });
         return;
       }
@@ -96,7 +114,7 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
         pageError = null;
       });
     } catch (_) {
-      if (mounted) setState(() => pageError = 'Could not reload the plan.');
+      if (mounted) setState(() => pageError = 'Could not reload the workout.');
     }
   }
 
@@ -110,15 +128,14 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
         final existing = repository.getPlan(planUuid);
         if (existing == null) {
           _unavailable = true;
-          pageError = 'This plan was archived or is unavailable.';
+          pageError = 'This workout was archived or is unavailable.';
         } else {
           expectedUpdatedAtMs = existing.updatedAtMs;
-          _programPlan = existing.programUuid != null;
           name.text = existing.name;
           description.text = existing.description;
           // Plank rows saved before timed sets carry rep targets, which a
           // timed exercise may not have. Convert them to the 30 s default
-          // so the plan can be saved.
+          // so the workout can be saved.
           final timedIds = {
             for (final e in repository.listExercises(includeArchived: true))
               if (e.inputMode == 'duration') e.uuid,
@@ -141,10 +158,14 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
             ),
           );
         }
+      } else if (widget.initialDraft case final draft?) {
+        name.text = draft.name;
+        description.text = draft.description;
+        items.addAll(draft.rows);
       }
     } catch (_) {
       _unavailable = true;
-      pageError = 'Could not load this plan from local storage.';
+      pageError = 'Could not load this workout from local storage.';
     }
   }
 
@@ -345,6 +366,42 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
       pageError = null;
     });
     try {
+      if (widget.returnDraft) {
+        final label = name.text.trim();
+        if (label.isEmpty || label.length > 100 || items.length > 100) {
+          throw ArgumentError('Invalid workout name or size');
+        }
+        for (final item in items) {
+          item.validate();
+        }
+        final draft = DraftWorkoutSource(
+          name: label,
+          description: description.text.trim(),
+          rows: List.unmodifiable(items),
+        );
+        _allowLeave = true;
+        context.pop(draft);
+        return;
+      }
+      final programUuid = widget.programUuid;
+      if (programUuid != null) {
+        final created = ref
+            .read(programRepositoryProvider)
+            .addWorkout(
+              programUuid,
+              DraftWorkoutSource(
+                name: name.text,
+                description: description.text,
+                rows: List.unmodifiable(items),
+              ),
+            );
+        invalidatePrograms(ref);
+        if (mounted) {
+          _allowLeave = true;
+          context.pop(created);
+        }
+        return;
+      }
       ref
           .read(workoutLibraryRepositoryProvider)
           .savePlan(
@@ -359,63 +416,32 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
         _allowLeave = true;
         context.pop();
       }
+    } on ProgramWorkoutLimit {
+      setState(() => pageError = 'A program can hold up to 30 workouts.');
     } on PlanEditConflict {
       setState(() {
         _editConflict = true;
         pageError =
-            'This plan changed while you were editing. '
+            'This workout changed while you were editing. '
             'Reload the latest version before saving.';
       });
     } on ArgumentError {
       setState(
-        () => pageError = 'Enter a plan name and valid exercise targets.',
+        () => pageError = 'Enter a workout name and valid exercise targets.',
       );
     } on ArchivedExercisePlanConflict {
       setState(
         () => pageError =
-            'An exercise in this plan was archived. '
+            'An exercise in this workout was archived. '
             'Remove newly added archived exercises, then try saving again.',
       );
     } catch (_) {
       setState(
         () => pageError =
-            'Could not save your plan. Nothing was partially saved.',
+            'Could not save this workout. Nothing was partially saved.',
       );
     } finally {
       if (mounted) setState(() => saving = false);
-    }
-  }
-
-  Future<void> _archive() async {
-    final yes = await showNsConfirm(
-      context,
-      title: 'Archive this plan?',
-      message:
-          'It will leave your plan list. '
-          'Previously recorded workouts will not be removed.',
-      confirmLabel: 'Archive',
-    );
-    if (!yes || !mounted) return;
-    try {
-      final version = expectedUpdatedAtMs;
-      if (version == null) throw StateError('Missing plan version');
-      ref
-          .read(workoutLibraryRepositoryProvider)
-          .archivePlan(planUuid, expectedUpdatedAtMs: version);
-      ref.invalidate(trainLibraryProvider);
-      if (mounted) {
-        _allowLeave = true;
-        context.pop();
-      }
-    } on PlanEditConflict {
-      if (mounted) {
-        setState(() {
-          _editConflict = true;
-          pageError = 'This plan changed. Reload it before archiving.';
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => pageError = 'Could not archive this plan.');
     }
   }
 
@@ -439,18 +465,10 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
         appBar: AppBar(
           leading: NsBackButton(onPressed: _requestExit),
           title: Text(
-            widget.planUuid == null
-                ? 'New training plan'
-                : 'Edit training plan',
+            widget.planUuid == null && widget.initialDraft == null
+                ? 'New workout'
+                : 'Edit workout',
           ),
-          actions: [
-            if (widget.planUuid != null && !_programPlan)
-              IconButton(
-                onPressed: _unavailable ? null : _archive,
-                icon: const Icon(Icons.archive_outlined),
-                tooltip: 'Archive plan',
-              ),
-          ],
         ),
         body: Center(
           child: ConstrainedBox(
@@ -464,7 +482,7 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
               ),
               children: [
                 Text(
-                  'PLAN THE WORK',
+                  'BUILD THE WORKOUT',
                   style: Theme.of(context).textTheme.headlineSmall
                       ?.copyWith(fontWeight: FontWeight.w900),
                 ),
@@ -479,7 +497,7 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
                   onChanged: _markDirty,
                   maxLength: 100,
                   textCapitalization: TextCapitalization.words,
-                  label: 'Plan name *',
+                  label: 'Workout name *',
                   hint: 'e.g. Upper Body A',
                 ),
                 const SizedBox(height: 12),
@@ -595,7 +613,7 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
                     child: OutlinedButton.icon(
                       onPressed: _reloadLatest,
                       icon: const Icon(Icons.refresh),
-                      label: const Text('Reload latest plan'),
+                      label: const Text('Reload latest workout'),
                     ),
                   ),
                 FilledButton.icon(
@@ -609,7 +627,7 @@ class _PlanEditorPageState extends ConsumerState<PlanEditorPage> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.save_outlined),
-                  label: const Text('Save plan offline'),
+                  label: const Text('Save workout'),
                 ),
               ],
             ),
