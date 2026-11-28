@@ -20,7 +20,9 @@ import '../programs/domain/program_schedule.dart';
 import '../programs/domain/program_status.dart';
 import '../programs/presentation/start_program_day.dart';
 import '../workouts/data/objectbox_workout_library_repository.dart';
+import 'plan_fit_widgets.dart';
 import 'program_weekday_sheet.dart';
+import 'train_library_state.dart';
 import 'workout_source_sheet.dart';
 
 /// A program the user added: today's workout, the weekly schedule and its
@@ -47,6 +49,7 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
     TrainingProgramRecord program, {
     DateTime? missedDate,
     String? missedPlanUuid,
+    String? swapPlanUuid,
   }) async {
     if (_busy) return;
     _busy = true;
@@ -58,6 +61,7 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
         program,
         missedDate: missedDate,
         missedPlanUuid: missedPlanUuid,
+        swapPlanUuid: swapPlanUuid,
         onFailed: _failed,
       );
     } finally {
@@ -309,6 +313,9 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
     final name = entry.day.planUuid == null
         ? 'Rest'
         : _planName(entry.day.planUuid!);
+    final recovery = planRecoveryLine(
+      ref.watch(planFitProvider)?.byPlan[entry.day.planUuid],
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Column(
@@ -323,7 +330,8 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
             // The Today and Done tags already say it.
             subtitle:
                 'Day ${entry.day.dayIndex + 1}'
-                '${entry.day.dayIndex == todayIndex && status != ProgramDayStatus.today && status != ProgramDayStatus.done ? ' · Today' : ''}',
+                '${entry.day.dayIndex == todayIndex && status != ProgramDayStatus.today && status != ProgramDayStatus.done ? ' · Today' : ''}'
+                '$recovery',
             trailing: tag == null
                 ? null
                 : NsTag(tag, warning: status == ProgramDayStatus.missed),
@@ -342,6 +350,35 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
         ],
       ),
     );
+  }
+
+  /// The suggestion card, only for an active program with a workout still to
+  /// do today when another of its workouts fits better.
+  List<Widget> _betterFit(
+    TrainingProgramRecord program,
+    ProgramWeekRow? todayRow,
+    String? todayPlan,
+    bool todayAvailable,
+  ) {
+    final fit = ref.watch(planFitProvider);
+    final suggestion = fit?.suggestion;
+    if (!program.isActive ||
+        suggestion == null ||
+        todayPlan == null ||
+        !todayAvailable ||
+        todayRow?.status == ProgramDayStatus.done ||
+        suggestion.plan.planUuid == todayPlan) {
+      return const [];
+    }
+    final suggested = suggestion.plan.planUuid;
+    return [
+      const SizedBox(height: 16),
+      BetterFitCard(
+        name: _planName(suggested),
+        suggestion: suggestion,
+        onStart: () => _busy ? null : _start(program, swapPlanUuid: suggested),
+      ),
+    ];
   }
 
   Widget _body(
@@ -417,6 +454,7 @@ class _MyProgramPageState extends ConsumerState<MyProgramPage> {
             icon: const Icon(Icons.play_arrow),
             label: const Text("Start today's workout"),
           ),
+        ..._betterFit(program, todayRow, todayPlan, todayAvailable),
         const SizedBox(height: 20),
         const SectionHeading('This week'),
         if (week.every((e) => e.day.planUuid == null))

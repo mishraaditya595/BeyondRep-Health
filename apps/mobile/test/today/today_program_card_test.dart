@@ -126,6 +126,7 @@ class _FakeActions implements WorkoutActions {
     TrainingProgramRecord program, {
     required String? expectedPlanUuid,
     DateTime? missedDate,
+    String? swapPlanUuid,
   }) {
     if (failWith != null) throw failWith!;
     calls.add(_Call(program, expectedPlanUuid, missedDate));

@@ -435,6 +435,77 @@ void main() {
       );
     });
   });
+  group('swap start', () {
+    WorkoutSessionRecord swap(
+      TrainingProgramRecord record, {
+      required String? expectedPlanUuid,
+      required String swapPlanUuid,
+      DateTime? missedDate,
+    }) {
+      storeProgram(record);
+      return actions.startProgramDay(
+        record,
+        expectedPlanUuid: expectedPlanUuid,
+        swapPlanUuid: swapPlanUuid,
+        missedDate: missedDate,
+      );
+    }
+
+    test('starts another workout of the program as today\'s session', () {
+      clock = DateTime(2026, 11, 25, 10);
+      final session = swap(
+        program(),
+        expectedPlanUuid: 'plan-a',
+        swapPlanUuid: 'plan-b',
+      );
+      expect(session.planUuid, 'plan-b');
+      expect(session.programUuid, 'prog-1');
+      expect(session.programDayLocalDate, '2026-11-25');
+    });
+
+    test('a rest day throws ProgramDayChanged and writes nothing', () {
+      clock = DateTime(2026, 11, 26, 10);
+      expect(
+        () => swap(program(), expectedPlanUuid: null, swapPlanUuid: 'plan-b'),
+        throwsA(isA<ProgramDayChanged>()),
+      );
+      expect(store.box<WorkoutSessionEntity>().count(), 0);
+    });
+
+    test('a changed day throws ProgramDayChanged', () {
+      clock = DateTime(2026, 11, 25, 10);
+      expect(
+        () =>
+            swap(program(), expectedPlanUuid: 'plan-b', swapPlanUuid: 'plan-b'),
+        throwsA(isA<ProgramDayChanged>()),
+      );
+      expect(store.box<WorkoutSessionEntity>().count(), 0);
+    });
+
+    test('a workout the program does not own throws StateError', () {
+      clock = DateTime(2026, 11, 25, 10);
+      expect(
+        () => swap(program(), expectedPlanUuid: 'plan-a', swapPlanUuid: 'own'),
+        throwsStateError,
+      );
+      expect(store.box<WorkoutSessionEntity>().count(), 0);
+    });
+
+    test('a swap for a missed day is refused', () {
+      clock = DateTime(2026, 11, 27, 10);
+      expect(
+        () => swap(
+          program(),
+          expectedPlanUuid: 'plan-a',
+          swapPlanUuid: 'plan-b',
+          missedDate: DateTime(2026, 11, 25),
+        ),
+        throwsArgumentError,
+      );
+      expect(store.box<WorkoutSessionEntity>().count(), 0);
+    });
+  });
+
   group('fresh state at the tap', () {
     TrainingProgramRecord twoDays({bool active = true}) =>
         TrainingProgramRecord(

@@ -61,10 +61,17 @@ abstract interface class WorkoutActions {
   /// date is re-checked against the clock, the schedule and the finished
   /// sessions at the call, must still be missed with [expectedPlanUuid] as its
   /// plan, otherwise [ProgramDayChanged]. The session records that date.
+  ///
+  /// With [swapPlanUuid] (only valid without [missedDate], else
+  /// [ArgumentError]) today must be a training day equal to
+  /// [expectedPlanUuid], otherwise [ProgramDayChanged]; the session then
+  /// starts that other workout of the program as today's session. A workout
+  /// the program does not own throws [StateError].
   WorkoutSessionRecord startProgramDay(
     TrainingProgramRecord program, {
     required String? expectedPlanUuid,
     DateTime? missedDate,
+    String? swapPlanUuid,
   });
 
   /// Materializes the template's exercises, then starts an unsaved workout
@@ -168,7 +175,11 @@ class RepositoryWorkoutActions implements WorkoutActions {
     TrainingProgramRecord program, {
     required String? expectedPlanUuid,
     DateTime? missedDate,
+    String? swapPlanUuid,
   }) {
+    if (swapPlanUuid != null && missedDate != null) {
+      throw ArgumentError('A swap only replaces today\'s workout');
+    }
     // The stored program decides, not the record the screen was built with.
     final stored = programs.getProgram(program.uuid);
     if (stored == null || stored.archivedAtMs != null || !stored.isActive) {
@@ -180,9 +191,21 @@ class RepositoryWorkoutActions implements WorkoutActions {
     final DateTime day;
     if (missedDate == null) {
       final today = dayFor(program, localNow).planUuid;
-      if (today != expectedPlanUuid) throw ProgramDayChanged();
-      if (today == null) throw StateError('Today is a rest day');
-      planUuid = today;
+      if (swapPlanUuid != null) {
+        if (today == null || today != expectedPlanUuid) {
+          throw ProgramDayChanged();
+        }
+        if (!programs
+            .programPlans(program.uuid)
+            .any((p) => p.uuid == swapPlanUuid)) {
+          throw StateError('Workout is not part of this program');
+        }
+        planUuid = swapPlanUuid;
+      } else {
+        if (today != expectedPlanUuid) throw ProgramDayChanged();
+        if (today == null) throw StateError('Today is a rest day');
+        planUuid = today;
+      }
       day = localNow;
     } else {
       final target = DateTime(
