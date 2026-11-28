@@ -243,6 +243,45 @@ class ObjectBoxProgramRepository implements ProgramRepository {
     return (name: name.trim(), description: _clip(description));
   }
 
+  /// Validates a row and its exercise: it exists and the targets match its
+  /// input mode (seconds for timed exercises, reps otherwise).
+  void _checkRow(PlanExerciseRecord r) {
+    r.validate();
+    final definition = _store
+        .box<ExerciseDefinitionEntity>()
+        .query(ExerciseDefinitionEntity_.uuid.equals(r.exerciseUuid))
+        .build();
+    final ExerciseDefinitionEntity? found;
+    try {
+      found = definition.findFirst();
+    } finally {
+      definition.close();
+    }
+    if (found == null) {
+      throw StateError('Workout refers to an unknown exercise');
+    }
+    final timed = found.inputMode == 'duration';
+    if (timed && (r.targetRepsMin != null || r.targetRepsMax != null)) {
+      throw ArgumentError('Timed exercise targets seconds, not reps');
+    }
+    if (!timed && r.targetDurationSeconds != null) {
+      throw ArgumentError('Rep exercise targets reps, not seconds');
+    }
+  }
+
+  /// True when [exerciseUuid] is a timed (duration) exercise.
+  bool _isTimed(String exerciseUuid) {
+    final q = _store
+        .box<ExerciseDefinitionEntity>()
+        .query(ExerciseDefinitionEntity_.uuid.equals(exerciseUuid))
+        .build();
+    try {
+      return q.findFirst()?.inputMode == 'duration';
+    } finally {
+      q.close();
+    }
+  }
+
   /// Rows of [s] ready to write under a new plan. Runs inside the write
   /// transaction: template exercises are materialized, copies read the live
   /// source plan. Returns the plan name and description too.
@@ -260,27 +299,7 @@ class ObjectBoxProgramRepository implements ProgramRepository {
         final items = <PlanExerciseRecord>[];
         for (var i = 0; i < s.rows.length; i++) {
           final r = s.rows[i];
-          r.validate();
-          final definition = _store
-              .box<ExerciseDefinitionEntity>()
-              .query(ExerciseDefinitionEntity_.uuid.equals(r.exerciseUuid))
-              .build();
-          final ExerciseDefinitionEntity? found;
-          try {
-            found = definition.findFirst();
-          } finally {
-            definition.close();
-          }
-          if (found == null) {
-            throw StateError('Workout refers to an unknown exercise');
-          }
-          final timed = found.inputMode == 'duration';
-          if (timed && (r.targetRepsMin != null || r.targetRepsMax != null)) {
-            throw ArgumentError('Timed exercise targets seconds, not reps');
-          }
-          if (!timed && r.targetDurationSeconds != null) {
-            throw ArgumentError('Rep exercise targets reps, not seconds');
-          }
+          _checkRow(r);
           items.add(
             PlanExerciseRecord(
               uuid: _ids.newId(),
@@ -317,17 +336,28 @@ class ObjectBoxProgramRepository implements ProgramRepository {
           description: source.description,
           items: [
             for (final row in source.exercises)
-              PlanExerciseRecord(
-                uuid: _ids.newId(),
-                exerciseUuid: row.exerciseUuid,
-                position: row.position,
-                targetSets: row.targetSets,
-                targetRepsMin: row.targetRepsMin,
-                targetRepsMax: row.targetRepsMax,
-                targetDurationSeconds: row.targetDurationSeconds,
-                restSeconds: row.restSeconds,
-                notes: row.notes,
-              ),
+              () {
+                // Rows saved before timed sets carry rep targets on a timed
+                // exercise: use the editor's 30 s default for them.
+                final legacy =
+                    row.targetDurationSeconds == null &&
+                    _isTimed(row.exerciseUuid);
+                final copy = PlanExerciseRecord(
+                  uuid: _ids.newId(),
+                  exerciseUuid: row.exerciseUuid,
+                  position: row.position,
+                  targetSets: row.targetSets,
+                  targetRepsMin: legacy ? null : row.targetRepsMin,
+                  targetRepsMax: legacy ? null : row.targetRepsMax,
+                  targetDurationSeconds: legacy
+                      ? 30
+                      : row.targetDurationSeconds,
+                  restSeconds: row.restSeconds,
+                  notes: row.notes,
+                );
+                _checkRow(copy);
+                return copy;
+              }(),
           ],
         );
     }

@@ -634,6 +634,116 @@ void main() {
       ], isNot(contains(pullUuid)));
     });
 
+    group('copying a saved workout', () {
+      void materialize(String id, String mode) {
+        final e = def(id, mode: mode);
+        library.materializeCatalogExercise(
+          id: e.id,
+          name: e.name,
+          muscleGroup: e.muscleGroup,
+          equipment: e.equipment,
+          category: e.category,
+          mode: e.mode,
+          release: 4,
+          primaryMuscles: e.primaryMuscles,
+          secondaryMuscles: e.secondaryMuscles,
+        );
+      }
+
+      void saved(
+        String uuid,
+        String exercise, {
+        int? reps,
+        int? seconds,
+        int sets = 3,
+      }) {
+        store.box<WorkoutPlanEntity>().put(
+          WorkoutPlanEntity(
+            uuid: uuid,
+            name: 'Saved $uuid',
+            description: '',
+            createdAtMs: 0,
+            updatedAtMs: 0,
+          ),
+        );
+        store.box<PlanExerciseEntity>().put(
+          PlanExerciseEntity(
+            uuid: '$uuid-row',
+            planUuid: uuid,
+            exerciseUuid: exercise,
+            position: 0,
+            targetSets: sets,
+            targetRepsMin: reps,
+            targetRepsMax: reps,
+            targetDurationSeconds: seconds,
+          ),
+        );
+      }
+
+      test('a legacy timed row with rep targets becomes 30 seconds', () {
+        materialize('builtin.v1.synthetic-plank', 'duration');
+        saved('legacy', 'builtin.v1.synthetic-plank', reps: 10);
+        final p = create('c-1');
+        final copy = programs.addWorkout(
+          p.uuid,
+          const CopyWorkoutSource('legacy'),
+          dayIndex: 1,
+          requestUuid: 'copy-1',
+        );
+        final row = programs
+            .programPlans(p.uuid)
+            .firstWhere((w) => w.uuid == copy)
+            .exercises
+            .single;
+        expect(row.targetDurationSeconds, 30);
+        expect(row.targetRepsMin, isNull);
+        expect(row.targetRepsMax, isNull);
+      });
+
+      test('a rep exercise with a seconds target is refused', () {
+        saved('bad', 'builtin.v1.synthetic-press', seconds: 30);
+        final p = create('c-1');
+        expect(
+          () => programs.addWorkout(
+            p.uuid,
+            const CopyWorkoutSource('bad'),
+            dayIndex: 1,
+            requestUuid: 'copy-1',
+          ),
+          throwsArgumentError,
+        );
+        expect(programs.getProgram(p.uuid)!.days[1].planUuid, isNull);
+      });
+
+      test('a row whose exercise is missing is refused', () {
+        saved('gone', 'builtin.v1.no-such-exercise');
+        final p = create('c-1');
+        expect(
+          () => programs.addWorkout(
+            p.uuid,
+            const CopyWorkoutSource('gone'),
+            dayIndex: 1,
+            requestUuid: 'copy-1',
+          ),
+          throwsStateError,
+        );
+      });
+
+      test('an invalid row is refused by validate', () {
+        saved('zero', 'builtin.v1.synthetic-press', reps: 8, sets: 0);
+        final p = create('c-1');
+        expect(
+          () => programs.addWorkout(
+            p.uuid,
+            const CopyWorkoutSource('zero'),
+            dayIndex: 1,
+            requestUuid: 'copy-1',
+          ),
+          throwsArgumentError,
+        );
+      });
+    });
+
     test('limit counts only live workouts', () {
       final p = create(
         'c-1',
