@@ -7,7 +7,10 @@ import 'package:beyondrep/features/catalog/application/catalog_providers.dart';
 import 'package:beyondrep/features/catalog/data/catalog_repository.dart';
 import 'package:beyondrep/features/catalog/domain/catalog_models.dart';
 import 'package:beyondrep/features/programs/data/objectbox_program_repository.dart';
+import 'package:beyondrep/features/catalog/domain/catalog_templates.dart';
+import 'package:beyondrep/features/programs/domain/program_models.dart';
 import 'package:beyondrep/features/programs/domain/program_repository.dart';
+import 'package:beyondrep/features/programs/application/program_providers.dart';
 import 'package:beyondrep/features/train/active_workout_state.dart';
 import 'package:beyondrep/features/train/my_program_page.dart';
 import 'package:beyondrep/features/train/program_detail_page.dart';
@@ -148,6 +151,13 @@ Future<List<String>> pumpPrograms(
         },
       ),
       GoRoute(
+        path: '/train/programs/:uuid/workouts/new',
+        builder: (_, s) {
+          visited.add('new-workout ${s.pathParameters['uuid']}');
+          return _AddWorkoutStub(programUuid: s.pathParameters['uuid']!);
+        },
+      ),
+      GoRoute(
         path: '/train/plans/:id/edit',
         builder: (_, s) {
           visited.add('edit ${s.pathParameters['id']}');
@@ -186,6 +196,43 @@ Future<List<String>> pumpPrograms(
   );
   await tester.pumpAndSettle();
   return visited;
+}
+
+/// Stands in for the workout editor in program mode: adds one workout to the
+/// program and pops its UUID, like the real editor does.
+class _AddWorkoutStub extends ConsumerWidget {
+  const _AddWorkoutStub({required this.programUuid});
+
+  final String programUuid;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Scaffold(
+      body: Center(
+        child: TextButton(
+          onPressed: () {
+            final snapshot = programsSnapshot();
+            final template = snapshot.templates.firstWhere(
+              (t) => t.id == 'tpl.push',
+            );
+            final created = ref
+                .read(programRepositoryProvider)
+                .addWorkout(
+                  programUuid,
+                  TemplateWorkoutSource(
+                    name: 'Stub workout',
+                    description: '',
+                    rows: templateRowInputs(template, snapshot),
+                    release: 4,
+                  ),
+                );
+            context.pop(created);
+          },
+          child: const Text('Add stub workout'),
+        ),
+      ),
+    );
+  }
 }
 
 CatalogState unavailableCatalog() =>
