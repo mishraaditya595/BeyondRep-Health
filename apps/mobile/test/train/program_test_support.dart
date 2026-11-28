@@ -127,6 +127,10 @@ Future<List<String>> pumpPrograms(
       ),
       GoRoute(path: '/train/programs', builder: (_, _) => const ProgramsPage()),
       GoRoute(
+        path: '/train/programs/new',
+        builder: (_, _) => const Scaffold(body: Text('CREATE')),
+      ),
+      GoRoute(
         path: '/train/programs/:id',
         builder: (_, s) =>
             ProgramDetailPage(programId: s.pathParameters['id']!),

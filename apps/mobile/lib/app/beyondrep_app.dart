@@ -22,6 +22,8 @@ import '../features/train/template_detail_page.dart';
 import '../features/train/my_program_page.dart';
 import '../features/train/program_detail_page.dart';
 import '../features/train/programs_page.dart';
+import '../features/train/create_program_page.dart';
+import '../features/programs/domain/program_models.dart';
 import '../features/train/workout_templates_page.dart';
 import '../features/train/exercise_detail_page.dart';
 import '../features/train/plan_editor_page.dart';
@@ -109,6 +111,17 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/train/programs',
             builder: (_, _) => const ProgramsPage(),
+          ),
+          GoRoute(
+            path: '/train/programs/new',
+            builder: (_, _) => const CreateProgramPage(),
+          ),
+          GoRoute(
+            path: '/train/programs/new/workout',
+            builder: (_, state) => PlanEditorPage(
+              returnDraft: true,
+              initialDraft: state.extra as DraftWorkoutSource?,
+            ),
           ),
           GoRoute(
             path: '/train/programs/:id',

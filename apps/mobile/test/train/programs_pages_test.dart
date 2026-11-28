@@ -244,6 +244,75 @@ void main() {
       expect(uuid, isNotEmpty);
     });
 
+    testWidgets('Create program opens the builder and the intro says so', (
+      tester,
+    ) async {
+      await open(tester, '/train/programs');
+      expect(
+        find.text(
+          'A weekly schedule of workouts. '
+          'Add a ready-made one or create your own.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Create program'));
+      await tester.pumpAndSettle();
+      expect(find.text('CREATE'), findsOneWidget);
+    });
+
+    testWidgets('your own programs say so in the list', (tester) async {
+      seed('prog.three');
+      final snapshot = programsSnapshot();
+      final template = snapshot.templates.firstWhere((t) => t.id == 'tpl.push');
+      ObjectBoxProgramRepository(store).createProgram(
+        requestUuid: 'custom-1',
+        name: 'My own',
+        description: '',
+        workouts: [
+          TemplateWorkoutSource(
+            name: 'Mine',
+            description: '',
+            rows: templateRowInputs(template, snapshot),
+            release: 4,
+          ),
+        ],
+        week: const [0, null, null, null, null, null, null],
+        firstDayWeekday: 1,
+        makeActive: false,
+        localToday: DateTime(2026, 11, 25),
+      );
+      await open(tester, '/train/programs');
+      expect(find.text('Your own'), findsOneWidget);
+      expect(find.text('Active'), findsOneWidget);
+      expect(find.text('Not active'), findsNothing);
+    });
+
+    testWidgets('an active own program reads Active · your own', (
+      tester,
+    ) async {
+      final snapshot = programsSnapshot();
+      final template = snapshot.templates.firstWhere((t) => t.id == 'tpl.push');
+      ObjectBoxProgramRepository(store).createProgram(
+        requestUuid: 'custom-1',
+        name: 'My own',
+        description: '',
+        workouts: [
+          TemplateWorkoutSource(
+            name: 'Mine',
+            description: '',
+            rows: templateRowInputs(template, snapshot),
+            release: 4,
+          ),
+        ],
+        week: const [0, null, null, null, null, null, null],
+        firstDayWeekday: 1,
+        makeActive: true,
+        localToday: DateTime(2026, 11, 25),
+      );
+      await open(tester, '/train/programs');
+      expect(find.text('Active · your own'), findsOneWidget);
+    });
+
     testWidgets('an unavailable catalogue says so', (tester) async {
       await pumpPrograms(
         tester,

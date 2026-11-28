@@ -81,6 +81,15 @@ class _ProgramsPageState extends ConsumerState<ProgramsPage> {
         if (matchesProgram(p, filter)) p,
     ];
     final headers = <Widget>[
+      FilledButton.icon(
+        onPressed: () => context.push('/train/programs/new'),
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(double.infinity, 46),
+        ),
+        icon: const Icon(Icons.add),
+        label: const Text('Create program'),
+      ),
+      const SizedBox(height: 16),
       if (mine.isNotEmpty) ...[
         const SectionHeading('Your programs'),
         for (final p in mine)
@@ -90,14 +99,17 @@ class _ProgramsPageState extends ConsumerState<ProgramsPage> {
               onTap: () => context.push('/train/program/${p.uuid}'),
               icon: Icons.event_repeat_outlined,
               title: p.name,
-              subtitle: p.isActive ? 'Active' : 'Not active',
+              subtitle: p.sourceId == 'custom'
+                  ? (p.isActive ? 'Active · your own' : 'Your own')
+                  : (p.isActive ? 'Active' : 'Not active'),
             ),
           ),
         const SizedBox(height: 8),
       ],
       const SectionHeading('Programs'),
       Text(
-        'A weekly schedule of workouts. Add one to get plans you can edit.',
+        'A weekly schedule of workouts. '
+        'Add a ready-made one or create your own.',
         style: TextStyle(color: muted),
       ),
       if (status == CatalogStatus.unavailable && all.isEmpty) ...[
