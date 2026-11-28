@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ids/uuid_factory.dart';
@@ -384,13 +383,8 @@ class ObjectBoxWorkoutLibraryRepository implements WorkoutLibraryRepository {
     });
   }
 
-  /// Test seam: called with `exercises`, `plan` and `rows` inside the copy
-  /// transaction, after each stage. A throw rolls the whole copy back.
-  @visibleForTesting
-  void Function(String step)? debugCopyHook;
-
-  /// Validated plan rows with fresh UUIDs for [rows], shared by template
-  /// copies and program imports. Throws [ArgumentError] on a row that does not
+  /// Validated plan rows with fresh UUIDs for [rows], shared by program
+  /// imports and workouts. Throws [ArgumentError] on a row that does not
   /// fit its exercise mode.
   List<PlanExerciseRecord> planItemsFromRows(List<TemplateRowInput> rows) {
     final items = [
@@ -433,92 +427,6 @@ class ObjectBoxWorkoutLibraryRepository implements WorkoutLibraryRepository {
     primaryMuscles: e.primaryMuscles,
     secondaryMuscles: e.secondaryMuscles,
   );
-
-  @override
-  WorkoutPlanRecord copyCatalogTemplate({
-    required String requestUuid,
-    required String name,
-    required String description,
-    required List<TemplateRowInput> rows,
-    required int release,
-  }) {
-    final label = name.trim();
-    if (requestUuid.isEmpty ||
-        label.isEmpty ||
-        label.length > 100 ||
-        rows.isEmpty ||
-        rows.length > 100) {
-      throw ArgumentError('Invalid template copy');
-    }
-    var cut = description.length > 1000 ? 1000 : description.length;
-    // Never split a surrogate pair at the cut.
-    if (cut < description.length &&
-        cut > 0 &&
-        (description.codeUnitAt(cut - 1) & 0xFC00) == 0xD800) {
-      cut--;
-    }
-    final planDescription = description.substring(0, cut);
-    final items = planItemsFromRows(rows);
-    return _store.runInTransaction(TxMode.write, () {
-      final existing = _byUuid(_plans, WorkoutPlanEntity_.uuid, requestUuid);
-      if (existing != null) return _plan(existing);
-      for (final row in rows) {
-        final e = row.exercise;
-        _materializeIn(
-          id: e.id,
-          name: e.name,
-          muscleGroup: e.muscleGroup,
-          equipment: e.equipment,
-          category: e.category,
-          mode: e.mode,
-          release: release,
-          primaryMuscles: e.primaryMuscles,
-          secondaryMuscles: e.secondaryMuscles,
-        );
-      }
-      debugCopyHook?.call('exercises');
-      final taken = {
-        for (final plan in _plans.getAll())
-          if (plan.archivedAtMs == null && plan.programUuid == null)
-            plan.name.trim().toLowerCase(),
-      };
-      var unique = label;
-      for (var n = 2; taken.contains(unique.toLowerCase()); n++) {
-        final suffix = ' ($n)';
-        // The plan name limit is 100 characters, suffix included.
-        final room = 100 - suffix.length;
-        unique =
-            '${label.length > room ? label.substring(0, room).trimRight() : label}$suffix';
-      }
-      final now = DateTime.now().toUtc().millisecondsSinceEpoch;
-      final plan = WorkoutPlanEntity(
-        uuid: requestUuid,
-        name: unique,
-        createdAtMs: now,
-        updatedAtMs: now,
-      )..description = planDescription.trim();
-      _plans.put(plan);
-      debugCopyHook?.call('plan');
-      for (final item in items) {
-        _items.put(
-          PlanExerciseEntity(
-            uuid: item.uuid,
-            planUuid: requestUuid,
-            exerciseUuid: item.exerciseUuid,
-            position: item.position,
-            targetSets: item.targetSets,
-            targetRepsMin: item.targetRepsMin,
-            targetRepsMax: item.targetRepsMax,
-            targetDurationSeconds: item.targetDurationSeconds,
-            restSeconds: item.restSeconds,
-            notes: item.notes.trim(),
-          ),
-        );
-      }
-      debugCopyHook?.call('rows');
-      return _plan(plan);
-    });
-  }
 
   @override
   List<WorkoutPlanRecord> listPlans() {

@@ -339,26 +339,6 @@ void main() {
       expect(library.getPlan(p.days[1].planUuid!)!.description, '');
     });
 
-    test('copying a template ignores program plans when numbering', () {
-      import('a');
-      final copy = library.copyCatalogTemplate(
-        requestUuid: 'copy-1',
-        name: 'Day A',
-        description: '',
-        rows: [row('builtin.v1.synthetic-press')],
-        release: 4,
-      );
-      expect(copy.name, 'Day A');
-      final again = library.copyCatalogTemplate(
-        requestUuid: 'copy-2',
-        name: 'Day A',
-        description: '',
-        rows: [row('builtin.v1.synthetic-press')],
-        release: 4,
-      );
-      expect(again.name, 'Day A (2)');
-    });
-
     test('a catalogue sync to a newer release leaves imported plans', () {
       final p = import('a');
       final before = library.getPlan(p.days[0].planUuid!)!;
