@@ -420,7 +420,7 @@ void main() {
     test('createProgram builds days and owned workouts', () {
       final before = library.listPlans().length;
       final p = create('c-1');
-      expect(p.sourceId, 'custom');
+      expect(p.sourceId, customProgramSourceId);
       expect(p.sourceRelease, 0);
       expect(p.firstDayWeekday, 2);
       expect(p.days, hasLength(7));

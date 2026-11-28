@@ -14,6 +14,7 @@ import '../catalog/domain/catalog_filter.dart';
 import '../catalog/domain/catalog_models.dart';
 import '../catalog/domain/exercise_choices.dart';
 import '../programs/application/program_providers.dart';
+import '../programs/domain/program_models.dart';
 import 'catalog_filter_sheet.dart';
 import 'exercise_picker_sheet.dart';
 import 'program_detail_page.dart';
@@ -99,7 +100,7 @@ class _ProgramsPageState extends ConsumerState<ProgramsPage> {
               onTap: () => context.push('/train/program/${p.uuid}'),
               icon: Icons.event_repeat_outlined,
               title: p.name,
-              subtitle: p.sourceId == 'custom'
+              subtitle: p.sourceId == customProgramSourceId
                   ? (p.isActive ? 'Active · your own' : 'Your own')
                   : (p.isActive ? 'Active' : 'Not active'),
             ),

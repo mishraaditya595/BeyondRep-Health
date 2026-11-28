@@ -51,6 +51,9 @@ class TrainingProgramRecord {
 /// Most live workouts one program may own, used by a day or not.
 const maxProgramWorkouts = 30;
 
+/// The `sourceId` of a program the person built themselves.
+const customProgramSourceId = 'custom';
+
 /// Where a new program-owned workout's rows come from.
 sealed class ProgramWorkoutSource {
   const ProgramWorkoutSource();

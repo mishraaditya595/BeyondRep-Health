@@ -465,7 +465,7 @@ class ObjectBoxProgramRepository implements ProgramRepository {
         uuid: requestUuid,
         name: unique,
         description: _clip(description),
-        sourceId: 'custom',
+        sourceId: customProgramSourceId,
         sourceRelease: 0,
         firstDayWeekday: firstDayWeekday,
         isActive: makeActive,

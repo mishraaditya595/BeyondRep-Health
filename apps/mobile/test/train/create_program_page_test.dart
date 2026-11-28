@@ -177,7 +177,7 @@ void main() {
 
     final program = onlyProgram();
     expect(program.name, 'My split');
-    expect(program.sourceId, 'custom');
+    expect(program.sourceId, customProgramSourceId);
     expect(program.isActive, isTrue);
     expect(program.firstDayWeekday, 3);
     final repo = ObjectBoxProgramRepository(store);
