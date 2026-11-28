@@ -12,7 +12,6 @@ import '../../core/design/section.dart';
 import '../../core/ids/uuid_factory.dart';
 import '../catalog/application/catalog_providers.dart';
 import '../catalog/application/exercise_choices_provider.dart';
-import '../catalog/data/catalog_repository.dart';
 import '../catalog/domain/catalog_templates.dart';
 import '../programs/application/program_providers.dart';
 import '../programs/data/objectbox_program_repository.dart';
