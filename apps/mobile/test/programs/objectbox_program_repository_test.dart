@@ -376,4 +376,285 @@ void main() {
       expect(count<TrainingProgramEntity>(), 1);
     });
   });
+
+  group('createProgram and addWorkout', () {
+    PlanExerciseRecord item(String exercise, int position, {int sets = 3}) =>
+        PlanExerciseRecord(
+          uuid: 'draft-row-$exercise-$position',
+          exerciseUuid: exercise,
+          position: position,
+          targetSets: sets,
+          targetRepsMin: 6,
+          targetRepsMax: 8,
+          restSeconds: 90,
+          notes: ' Slow ',
+        );
+
+    DraftWorkoutSource draft(String name, {List<String>? exercises}) {
+      final ids = exercises ?? ['builtin.v1.synthetic-press'];
+      return DraftWorkoutSource(
+        name: name,
+        description: 'About $name.',
+        rows: [for (var i = 0; i < ids.length; i++) item(ids[i], i)],
+      );
+    }
+
+    setUp(() {
+      for (final id in [
+        'builtin.v1.synthetic-press',
+        'builtin.v1.synthetic-row',
+      ]) {
+        final e = def(id);
+        library.materializeCatalogExercise(
+          id: e.id,
+          name: e.name,
+          muscleGroup: e.muscleGroup,
+          equipment: e.equipment,
+          category: e.category,
+          mode: e.mode,
+          release: 4,
+          primaryMuscles: e.primaryMuscles,
+          secondaryMuscles: e.secondaryMuscles,
+        );
+      }
+    });
+
+    TrainingProgramRecord create(
+      String request, {
+      String name = 'My split',
+      String description = 'Mine.',
+      List<ProgramWorkoutSource>? workouts,
+      List<int?>? weekIndexes,
+      bool makeActive = false,
+    }) => programs.createProgram(
+      requestUuid: request,
+      name: name,
+      description: description,
+      workouts: workouts ?? [draft('Push'), draft('Pull')],
+      week: weekIndexes ?? const [0, null, 1, null, 0, null, null],
+      firstDayWeekday: 2,
+      makeActive: makeActive,
+      localToday: today,
+    );
+
+    test('createProgram builds days and owned workouts', () {
+      final before = library.listPlans().length;
+      final p = create('c-1');
+      expect(p.sourceId, 'custom');
+      expect(p.sourceRelease, 0);
+      expect(p.firstDayWeekday, 2);
+      expect(p.days, hasLength(7));
+      expect(p.days[0].planUuid, p.days[4].planUuid);
+      expect(p.days[2].planUuid, isNot(p.days[0].planUuid));
+      final owned = programs.programPlans(p.uuid);
+      expect(owned, hasLength(2));
+      expect(owned.map((o) => o.programUuid), everyElement('c-1'));
+      expect(owned.map((o) => o.name), ['Push', 'Pull']);
+      expect(owned.first.exercises.single.notes, 'Slow');
+      expect(library.listPlans(), hasLength(before));
+    });
+
+    test('createProgram repeat returns the same program', () {
+      final first = create('c-1');
+      final again = create('c-1');
+      expect(again.uuid, first.uuid);
+      expect(programs.listPrograms(), hasLength(1));
+      expect(count<WorkoutPlanEntity>(), 2);
+    });
+
+    test(
+      'createProgram rejects all-rest, bad index, unused workout, bad name',
+      () {
+        final cases = <Object Function()>[
+          () => create(
+            'x',
+            weekIndexes: const [null, null, null, null, null, null, null],
+          ),
+          () => create(
+            'x',
+            weekIndexes: const [0, 5, null, null, null, null, null],
+          ),
+          () => create(
+            'x',
+            weekIndexes: const [0, null, null, null, null, null, null],
+          ),
+          () => create('x', name: '   '),
+          () => create('x', name: 'a' * 101),
+        ];
+        for (final run in cases) {
+          expect(run, throwsArgumentError);
+        }
+        expect(programs.listPrograms(), isEmpty);
+        expect(count<WorkoutPlanEntity>(), 0);
+      },
+    );
+
+    test(
+      'createProgram with makeActive deactivates the old active program',
+      () {
+        import('old', makeActive: true);
+        final p = create('c-1', makeActive: true);
+        expect(programs.activeProgram()?.uuid, p.uuid);
+        expect(p.activatedLocalDate, '2026-11-25');
+        expect(programs.getProgram('old')!.isActive, isFalse);
+      },
+    );
+
+    test('createProgram from a template materializes its exercises', () {
+      final p = create(
+        'c-1',
+        workouts: [
+          TemplateWorkoutSource(
+            name: 'Template day',
+            description: 'From the catalogue.',
+            rows: [row('builtin.v1.synthetic-fly')],
+            release: 4,
+          ),
+        ],
+        weekIndexes: const [0, null, null, null, null, null, null],
+      );
+      final plan = programs.programPlans(p.uuid).single;
+      expect(plan.name, 'Template day');
+      expect(plan.exercises.single.exerciseUuid, 'builtin.v1.synthetic-fly');
+      expect(
+        library.listExercises().map((e) => e.uuid),
+        contains('builtin.v1.synthetic-fly'),
+      );
+    });
+
+    test('createProgram unique name adds (2)', () {
+      create('c-1');
+      final second = create('c-2');
+      expect(second.name, 'My split (2)');
+    });
+
+    test(
+      'CopyWorkoutSource copies rows with new row UUIDs and leaves source',
+      () {
+        final source = import('src');
+        final sourcePlan = programs.programPlans(source.uuid).first;
+        final p = create(
+          'c-1',
+          workouts: [CopyWorkoutSource(sourcePlan.uuid)],
+          weekIndexes: const [0, null, null, null, null, null, null],
+        );
+        final copy = programs.programPlans(p.uuid).single;
+        expect(copy.uuid, isNot(sourcePlan.uuid));
+        expect(copy.name, sourcePlan.name);
+        expect(copy.programUuid, p.uuid);
+        expect(copy.exercises.length, sourcePlan.exercises.length);
+        expect(
+          copy.exercises
+              .map((e) => e.uuid)
+              .toSet()
+              .intersection(sourcePlan.exercises.map((e) => e.uuid).toSet()),
+          isEmpty,
+        );
+        expect(library.getPlan(sourcePlan.uuid)!.programUuid, source.uuid);
+        expect(
+          library.getPlan(sourcePlan.uuid)!.updatedAtMs,
+          sourcePlan.updatedAtMs,
+        );
+      },
+    );
+
+    test('CopyWorkoutSource of a missing plan throws and writes nothing', () {
+      expect(
+        () => create(
+          'c-1',
+          workouts: [const CopyWorkoutSource('nope')],
+          weekIndexes: const [0, null, null, null, null, null, null],
+        ),
+        throwsArgumentError,
+      );
+      expect(programs.listPrograms(), isEmpty);
+    });
+
+    test('addWorkout returns a plan setDayPlan accepts', () {
+      final p = create('c-1');
+      final planUuid = programs.addWorkout(p.uuid, draft('Legs'));
+      programs.setDayPlan(p.uuid, 5, planUuid);
+      expect(programs.getProgram(p.uuid)!.days[5].planUuid, planUuid);
+      expect(programs.programPlans(p.uuid), hasLength(3));
+    });
+
+    test('addWorkout refuses the 31st workout', () {
+      final p = create(
+        'c-1',
+        workouts: [for (var i = 0; i < 7; i++) draft('W$i')],
+        weekIndexes: [for (var i = 0; i < 7; i++) i],
+      );
+      for (var i = 7; i < 30; i++) {
+        programs.addWorkout(p.uuid, draft('W$i'));
+      }
+      expect(programs.programPlans(p.uuid), hasLength(30));
+      expect(
+        () => programs.addWorkout(p.uuid, draft('One too many')),
+        throwsA(isA<ProgramWorkoutLimit>()),
+      );
+      expect(programs.programPlans(p.uuid), hasLength(30));
+    });
+
+    test('createProgram with 31 workouts throws ProgramWorkoutLimit', () {
+      expect(
+        () => create(
+          'c-1',
+          workouts: [for (var i = 0; i < 31; i++) draft('W$i')],
+          weekIndexes: [for (var i = 0; i < 7; i++) i],
+        ),
+        throwsA(isA<ProgramWorkoutLimit>()),
+      );
+      expect(programs.listPrograms(), isEmpty);
+    });
+
+    test('updateDetails trims and renames; empty name throws', () {
+      final p = create('c-1');
+      programs.updateDetails(
+        p.uuid,
+        name: '  Renamed  ',
+        description: ' New. ',
+      );
+      final after = programs.getProgram(p.uuid)!;
+      expect(after.name, 'Renamed');
+      expect(after.description, 'New.');
+      expect(
+        () => programs.updateDetails(p.uuid, name: ' ', description: ''),
+        throwsArgumentError,
+      );
+      expect(programs.getProgram(p.uuid)!.name, 'Renamed');
+    });
+
+    for (final step in ['exercises', 'plans', 'rows', 'program', 'days']) {
+      test('a throw after "$step" during create leaves nothing', () {
+        programs.debugImportHook = (s) {
+          if (s == step) throw StateError('boom');
+        };
+        expect(
+          () => create(
+            'c-1',
+            makeActive: true,
+            workouts: [
+              TemplateWorkoutSource(
+                name: 'T',
+                description: '',
+                rows: [row('builtin.v1.synthetic-fly')],
+                release: 4,
+              ),
+              draft('D'),
+            ],
+            weekIndexes: const [0, 1, null, null, null, null, null],
+          ),
+          throwsStateError,
+        );
+        expect(count<TrainingProgramEntity>(), 0);
+        expect(count<ProgramDayEntity>(), 0);
+        expect(count<WorkoutPlanEntity>(), 0);
+        expect(count<PlanExerciseEntity>(), 0);
+        expect(
+          library.listExercises().map((e) => e.uuid),
+          isNot(contains('builtin.v1.synthetic-fly')),
+        );
+      });
+    }
+  });
 }
